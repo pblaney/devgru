@@ -19,6 +19,7 @@ Imports:
     data.table,
     rtracklayer,
     dplyr,
-    readr
+    readr,
+    fishHook
 Remotes:
     github::mskilab/gUtils

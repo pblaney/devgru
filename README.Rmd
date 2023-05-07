@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-# devgru <img src="man/figures/devgru_logo.png" align="right" width="240" />
+# devgru <img src="man/figures/devgru_logo.png" align="right" width="500" />
 
 <!-- badges: start -->
 <!-- badges: end -->
@@ -26,6 +26,6 @@ A developmental `R` environment for a variety of `GenomicRanges` utilities
 
 You can install the development version of devgru from [GitHub](https://github.com/) with:
 
-``` {r}
+``` r
 devtools::install_github("pblaney/devgru")
 ```

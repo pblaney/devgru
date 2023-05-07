@@ -46,6 +46,21 @@
 #                                                                                    #
 # }}}}------->>>                                                     <<<-------{{{{  #
 
+#' @import gUtils
+#' @import GenomicRanges
+#' @import GenomeInfoDb
+
+
+#' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
+#' @importFrom dplyr sample_n
+#' @importFrom rtracklayer import
+#' @importFrom data.table fread as.data.table
+#' @importFrom readr read_delim
+
+
+## appease R CMD CHECK misunderstanding of data.table syntax by declaring these global variables
+gene_biotype=type=gene_name=NULL
+
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
   op <- options()
@@ -70,8 +85,19 @@
 #
 # }}}}------->>>
 
-
-# Reset order of chromosomes to standard, return fixed GRanges
+#' @name gr_refactor_seqs
+#' @title Refactor seqinfo, seqnames, seqlengths, seqlevels of GRanges object for easy harmony
+#'
+#' @description
+#' Single command to refactor all seq details of a GRanges object to easily harmonize with any other GRanges object.
+#' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, see `gUtils::hg_seqlengths()`
+#' Users can adjust this using the `new_levels` parameter.
+#'
+#' @param input_gr GenomicRanges object to refactor
+#' @param new_levels Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
 gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   
   # First, make sure we match input GR 'chr' notation with the desired seqs
@@ -131,7 +157,18 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #
 # }}}}------->>>
 
-# Read in GTF file, such as one from Ensembl, and convert to GR
+#' @name read_gtf_file
+#' @title Read in a GTF file, such as one from Ensembl, and convert to GRanges object
+#'
+#' @description
+#' Read in a GTF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+#' The GTF file can be either zipped or unzipped.
+#'
+#' @param gtf_file_path Path to GTF file
+#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
 read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
   
   gtf_gr <- rtracklayer::import(gtf_file_path)
@@ -141,19 +178,41 @@ read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
   return(gtf_gr)
 }
 
-# Shortcut to get known coding genes from GTF and convert to GR
+#' @name get_genes_shortcut
+#' @title Shortcut to get only protein coding genes from GTF file and convert to GRanges object
+#'
+#' @description
+#' Read in a GTF file, subset to protein coding genes, and convert it to a GRanges object with refactored seq details.
+#' The GTF file can be either zipped or unzipped.
+#'
+#' @param gtf_file_path Path to GTF file
+#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
 get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
 
-  gtf_gr <- read_gtf_file(gtf_file_path = gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
+  gtf_gr <- read_gtf_file(gtf_file_path = gtf_file_path, seq_lengths = seq_lengths)
   
   # Subset to protein coding biotype and non-NA gene symbols
   genes <- gtf_gr %Q% (gene_biotype == "protein_coding" & type == "gene" & !is.na(gene_name))
   return(genes)
 }
 
-
-# Read MAF, with (TODO: some...not all currently) maftools options, and convert to GR
-# For regular MAFtools operations, use maftools::read.maf()
+# TODO: take both zipped and unzipped files
+#' @name read_maf_file
+#' @title Read MAF file and convert to GRanges object
+#'
+#' @description
+#' Read in a MAF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+#' The MAF files must be unzipped.
+#' For more specific MAFtools operations, see `maftools::read.maf()`
+#'
+#' @param maf_file_path Path to MAF file
+#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
 read_maf_file <- function(maf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
   
   maf_dt <- data.table::fread(maf_file_path)
@@ -164,8 +223,20 @@ read_maf_file <- function(maf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
   return(maf_gr)
 }
 
-
-# Read in a BED file, with or without header, and convert to GR
+#' @name read_bed_file
+#' @title Read in a BED file, with or without header, and convert to GRanges object
+#'
+#' @description
+#' Read in a BED file and convert it to a GRanges object with refactored seq details.
+#' Expects the first 3 columns as chromosome, start, end; If more columns are present, user must provide column names.
+#' The BED file must be unzipped.
+#'
+#' @param bed_file_path Path to BED file
+#' @param colnames Names for additional columns in BED file
+#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
 read_bed_file <- function(bed_file_path, colnames = NULL, seq_lengths = gUtils::hg_seqlengths()) {
   
   bed_df <- readr::read_delim(file = bed_file_path,

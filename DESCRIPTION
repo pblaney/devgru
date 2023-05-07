@@ -22,4 +22,5 @@ Imports:
     readr,
     fishHook
 Remotes:
-    github::mskilab/gUtils
+    github::mskilab/gUtils,
+    github::mskilab/fishHook

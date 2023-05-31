@@ -1,7 +1,7 @@
 ######################################################################################
 #                         ___   ___        ____   ____                               #
 #                          | | |     |   /  |     |   | |   |                        #
-# }}}}------->>>           + | |-+-  |  +   | +-  |-+-  |   |        <<<-------{{{{  #
+# }}}}------->>>           + | |-+-  |  +   | +-  |-+-  |   |         <<<-------{{{{ #
 #                          | | |     | /    |   | |  \  |   |                        #
 #                         ---   ---   /      ---      \  ---                         #        
 # ▒▓▓▒▒▒▒▒▒▒▒▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▒▒▒▒▒▒▒▒▒▒▒▒
@@ -44,17 +44,19 @@
 # ▒▒▒▒▒▒▒▓▓▓▓▓▒▒▒▓▒▓▓▓▓▓▓▒▒▒▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░▒▒▒░░░░▒▒▒▒▓▓▒▓▒▒▓▓▓▓▒▒▒▒▒▓▒▒▓▒▒▒▒▒▒
 # ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▓▓▒▓▓▓▓▒▒▒▓▓▓▓▓▓▒▒▒▒▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
 #                                                                                    #
-# }}}}------->>>                                                     <<<-------{{{{  #
+# }}}}------->>>                                                      <<<-------{{{{ #
 
 #' @import gUtils
 #' @import GenomicRanges
 #' @import GenomeInfoDb
+#' @import data.table
+#' @import VariantAnnotation
+#' @import stringr
 
 
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
 #' @importFrom dplyr sample_n
 #' @importFrom rtracklayer import
-#' @importFrom data.table fread as.data.table
 #' @importFrom readr read_delim
 
 
@@ -71,6 +73,7 @@ gene_biotype=type=gene_name=NULL
   if (any(toset)) options(op.devgru[toset])
 
   Sys.setenv(DEFAULT_BSGENOME = 'BSgenome.Hsapiens.UCSC.hg38::Hsapiens')
+  Sys.setenv(DEFAULT_GENOME = 'BSgenome.Hsapiens.UCSC.hg38::Hsapiens')
   options(scipen = 999)
 
   invisible()
@@ -251,3 +254,194 @@ read_bed_file <- function(bed_file_path, colnames = NULL, seq_lengths = gUtils::
   return(bed_gr)
 }
 
+#' @name read_vcf_file
+#' @title Read in a VCF file and convert to GRanges object
+#'
+#' @description
+#' Read in a VCF file and convert it to a GRanges object with refactored seq details.
+#' Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA.
+#' The VCF file can be either zipped or unzipped.
+#'
+#' @param vcf_file_path Path to VCF file
+#' @param tumor_sample Name of tumor sample as reported in VCF
+#' @param normal_sample Name of normal sample as reported in VCF
+#' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba
+#' @param mut_type Type of mutations within VCF, supported: snv, indel
+#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#'
+#' @return GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @export
+read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NULL,
+                          caller = NULL, mut_type = NULL, seq_lengths = gUtils::hg_seqlengths()) {
+  
+  # Read in VCF into VA VCF obj
+  vcf_va <- VariantAnnotation::readVcf(file = vcf_file_path)
+  
+  # Build the GRanges obj from VCF obj
+  # Start by setting the GRanges base and exclude the paramRangesID column
+  vcf_gr_base <- vcf_va@rowRanges[,-1]
+  
+  # remove names of range rows
+  names(vcf_gr_base) <- NULL
+  
+  # Have user provide tumor_sample and normal_sample
+  # Create metadata column with patient and sample name
+  vcf_query_ids <- vcf_va@metadata$header@samples
+  
+  # Edge case: SvABA uses BAM name for SAMPLE columns in VCF
+  if(caller %in% c("svaba")) {
+    vcf_query_ids <- stringr::str_remove(string = vcf_query_ids, pattern = "\\..+\\.bam$")
+  }
+  
+  # Add column for name of caller
+  vcf_gr_base$CALLER <- caller
+  
+  # TODO: Sanity Check: Do VCF query IDs match user-provided tumor/normal parameters?
+  # in germline only 1 so length should be 1 and only normal_sample should be given
+  if(caller %in% c("mutect", "svaba") & tumor_sample %in% vcf_query_ids & normal_sample %in% vcf_query_ids) {
+    vcf_tumor_sample_index <- which(tumor_sample == vcf_query_ids)
+    vcf_normal_sample_index <- which(normal_sample == vcf_query_ids)
+  
+    vcf_gr_base$TUMOR <- vcf_query_ids[vcf_tumor_sample_index]
+    vcf_gr_base$NORMAL <- vcf_query_ids[vcf_normal_sample_index]
+    
+    vcf_gr_base$SAMPLE <- vcf_query_ids[vcf_tumor_sample_index]
+    vcf_gr_base$PATIENT <- vcf_query_ids[vcf_normal_sample_index]
+  
+  # Strelka, VarScan uses generic "NORMAL"/"TUMOR" as name of SAMPLE columns instead of sample ID/BAM basename
+  } else if(caller %in% c("strelka", "varscan") & !is.null(tumor_sample) & !is.null(normal_sample)) {
+  
+    vcf_tumor_sample_index <- which("TUMOR" == vcf_query_ids)
+    vcf_normal_sample_index <- which("NORMAL" == vcf_query_ids)
+  
+    vcf_gr_base$SAMPLE <- tumor_sample
+    vcf_gr_base$TUMOR <- tumor_sample
+  
+    vcf_gr_base$PATIENT <- normal_sample
+    vcf_gr_base$NORMAL <- normal_sample
+  
+  } else {
+    # Problem if there is no proper combo of samples and caller
+    errorCondition(message = "\nTumor/Normal sample names provided NOT FOUND in VCF")
+  }
+  
+  # Now form the final GRanges obj by grabbing the REF, ALT, QUAL, FILTER, and all INFO columns
+  vcf_gr <- vcf_gr_base
+  mcols(vcf_gr) <- c(mcols(vcf_gr_base), vcf_va@fixed, vcf_va@info)
+  
+  # Convert the ALT field from DNA Biostring to character
+  vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))
+  
+  # Add tumor and normal specific DP field
+  vcf_gr$DP_TUMOR <- vcf_va@assays@data@listData$DP[,vcf_tumor_sample_index]
+  vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]  
+
+  if(caller == "mutect") {
+    # FORMAT fields are stored in list of lists, need to properly extract tumor AD, AF and normal AD
+    # When unlisting the AD/AF fields, the allele depth is split into REF and ALT columns
+    # so easily grab with even (ALT) and odd (REF) vector index
+    vcf_tumor_allele_depth <- unlist(vcf_va@assays@data@listData$AD[,vcf_tumor_sample_index])
+    odd_even_index <- seq_len(length(vcf_tumor_allele_depth)) %% 2
+
+    vcf_gr$AD_REF_TUMOR <- vcf_tumor_allele_depth[odd_even_index == 1]
+    vcf_gr$AD_ALT_TUMOR <- vcf_tumor_allele_depth[odd_even_index == 0]
+
+    vcf_gr$VAF <- unlist(vcf_va@assays@data@listData$AF[,vcf_tumor_sample_index])
+    vcf_gr$GT_TUMOR <- vcf_va@assays@data@listData$GT[,vcf_tumor_sample_index]
+
+    vcf_normal_allele_depth <- unlist(vcf_va@assays@data@listData$AD[,vcf_normal_sample_index])
+    vcf_gr$AD_REF_NORMAL <- vcf_normal_allele_depth[odd_even_index == 1]
+    vcf_gr$AD_ALT_NORMAL <- vcf_normal_allele_depth[odd_even_index == 0]
+
+    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,vcf_normal_sample_index]
+    
+    # Some INFO metrics need to be reformatted from complex to simple (i.e. list to vector)
+    vcf_gr$AS_FilterStatus <- unlist(vcf_gr$AS_FilterStatus)
+    vcf_gr$AS_UNIQ_ALT_READ_COUNT <- unlist(vcf_gr$AS_UNIQ_ALT_READ_COUNT)
+    
+    MBQ_1 <- unlist(vcf_gr$MBQ)[odd_even_index == 1]
+    MBQ_2 <- unlist(vcf_gr$MBQ)[odd_even_index == 0]
+    vcf_gr$MBQ <- stringr::str_c(MBQ_1, MBQ_2, sep = ",")
+    
+    MFRL_1 <- unlist(vcf_gr$MFRL)[odd_even_index == 1]
+    MFRL_2 <- unlist(vcf_gr$MFRL)[odd_even_index == 0]
+    vcf_gr$MFRL <- stringr::str_c(MFRL_1, MFRL_2, sep = ",")
+    
+    MMQ_1 <- unlist(vcf_gr$MMQ)[odd_even_index == 1]
+    MMQ_2 <- unlist(vcf_gr$MMQ)[odd_even_index == 0]
+    vcf_gr$MMQ <- stringr::str_c(MMQ_1, MMQ_2, sep = ",")
+    
+    vcf_gr$MPOS <- unlist(vcf_gr$MPOS)
+    vcf_gr$NALOD <- unlist(vcf_gr$NALOD)
+    vcf_gr$NLOD <- unlist(vcf_gr$NLOD)
+    vcf_gr$POPAF <- unlist(vcf_gr$POPAF)
+    
+    RPA_1 <- unlist(vcf_gr$RPA)[odd_even_index == 1]
+    RPA_2 <- unlist(vcf_gr$RPA)[odd_even_index == 0]
+    vcf_gr$RPA <- stringr::str_c(RPA_1, RPA_2, sep = ",")
+    
+    vcf_gr$TLOD <- unlist(vcf_gr$TLOD)
+    
+  } else if(caller == "strelka" & mut_type == "snv") {
+    # Strelka VCF breaks down reads by nucleotide, then by tier 
+    vcf_gr$AU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_tumor_sample_index]
+    vcf_gr$AU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_tumor_sample_index + 2]
+    
+    vcf_gr$CU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_tumor_sample_index]
+    vcf_gr$CU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_tumor_sample_index + 2]
+    
+    vcf_gr$GU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_tumor_sample_index]
+    vcf_gr$GU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_tumor_sample_index + 2]
+    
+    vcf_gr$TU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_tumor_sample_index]
+    vcf_gr$TU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_tumor_sample_index + 2]
+    
+    vcf_gr$AU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_normal_sample_index]
+    vcf_gr$AU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_normal_sample_index + 2]
+    
+    vcf_gr$CU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_normal_sample_index]
+    vcf_gr$CU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_normal_sample_index + 2]
+    
+    vcf_gr$GU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_normal_sample_index]
+    vcf_gr$GU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_normal_sample_index + 2]
+    
+    vcf_gr$TU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_normal_sample_index]
+    vcf_gr$TU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_normal_sample_index + 2]
+    
+  } else if(caller == "strelka" & mut_type == "indel") {
+    # Strelka has different FORMAT fields for indel VCF, most relevant is TIR (Reads strongly supporting indel allele for tiers 1,2)
+    vcf_gr$TIR_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_tumor_sample_index]
+    vcf_gr$TIR_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_tumor_sample_index + 2]
+    
+    vcf_gr$TIR_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_normal_sample_index]
+    vcf_gr$TIR_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_normal_sample_index + 2]
+    
+  } else if(caller == "varscan") {
+    # Varscan breaks down the read depth into 2 separate fields as ref read depth and variant read depth
+    vcf_gr$RD_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RD)[,vcf_tumor_sample_index]
+    vcf_gr$AD_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AD)[,vcf_tumor_sample_index]
+    
+    vcf_gr$FREQ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FREQ)[,vcf_tumor_sample_index]
+    vcf_gr$GT_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_tumor_sample_index]
+    
+    vcf_gr$RD_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RD)[,vcf_normal_sample_index]
+    vcf_gr$AD_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AD)[,vcf_normal_sample_index]
+    
+    vcf_gr$FREQ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FREQ)[,vcf_normal_sample_index]
+    vcf_gr$GT_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_normal_sample_index]
+    
+  } else if(caller == "svaba") {
+    # SvABA also provides the SR FORMAT field for number of spanning reads for the variants
+    vcf_gr$AD_TUMOR <- vcf_va@assays@data@listData$AD[,vcf_tumor_sample_index]
+    vcf_gr$SR_TUMOR <- vcf_va@assays@data@listData$SR[,vcf_tumor_sample_index]
+    vcf_gr$GT_TUMOR <- vcf_va@assays@data@listData$GT[,vcf_tumor_sample_index]
+    
+    vcf_gr$AD_NORMAL <- vcf_va@assays@data@listData$AD[,vcf_normal_sample_index]
+    vcf_gr$SR_NORMAL <- vcf_va@assays@data@listData$SR[,vcf_normal_sample_index]
+    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,vcf_normal_sample_index]
+  }
+  
+  # Sort out seqinfo/levels/lengths mess
+  vcf_gr <- gr_refactor_seqs(input_gr = vcf_gr, new_levels = seq_lengths)
+  return(vcf_gr)
+}

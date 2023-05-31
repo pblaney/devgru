@@ -20,7 +20,9 @@ Imports:
     rtracklayer,
     dplyr,
     readr,
-    fishHook
+    fishHook,
+    VariantAnnotation,
+    stringr
 Remotes:
     github::mskilab/gUtils,
     github::mskilab/fishHook

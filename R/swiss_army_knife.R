@@ -329,8 +329,14 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
   vcf_gr <- vcf_gr_base
   mcols(vcf_gr) <- c(mcols(vcf_gr_base), vcf_va@fixed, vcf_va@info)
   
-  # Convert the ALT field from DNA Biostring to character
-  vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))
+  # Convert the REF/ALT field from DNA Biostring to character
+  if(!is.character(vcf_gr$ALT)) {
+    vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))  # Needed for SNVs primarily but not exclusively
+  }
+
+  if(!is.character(vcf_gr$REF)) {
+    vcf_gr$REF <- as.character(unlist(vcf_va@fixed$REF))  # Needed for InDels primarily but not exclusively
+  }
   
   # Add tumor and normal specific DP field
   vcf_gr$DP_TUMOR <- vcf_va@assays@data@listData$DP[,vcf_tumor_sample_index]
@@ -439,6 +445,10 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
     vcf_gr$AD_NORMAL <- vcf_va@assays@data@listData$AD[,vcf_normal_sample_index]
     vcf_gr$SR_NORMAL <- vcf_va@assays@data@listData$SR[,vcf_normal_sample_index]
     vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,vcf_normal_sample_index]
+
+    # Some INFO metrics are complex format but empty, remove them here
+    vcf_gr <- vcf_gr[,!colnames(mcols(vcf_gr)) %in% c("READNAMES", "BX")]
+
   }
   
   # Sort out seqinfo/levels/lengths mess

@@ -331,11 +331,11 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
   
   # Convert the REF/ALT field from DNA Biostring to character
   if(!is.character(vcf_gr$ALT)) {
-    vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))  # Needed for SNVs primarily but not exclusively
+    vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))  # Needed for both SNVs and InDels
   }
 
-  if(!is.character(vcf_gr$REF)) {
-    vcf_gr$REF <- as.character(unlist(vcf_va@fixed$REF))  # Needed for InDels primarily but not exclusively
+  if(mut_type == "indel" & !is.character(vcf_gr$REF)) {
+    vcf_gr$REF <- unlist(stringr::str_split(string = Biostrings::toString(vcf_va@fixed$REF), pattern = ", "))  # Needed for InDels
   }
   
   # Add tumor and normal specific DP field

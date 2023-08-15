@@ -22,7 +22,9 @@ Imports:
     readr,
     fishHook,
     VariantAnnotation,
-    stringr
+    stringr,
+    S4Vectors,
+    Biostrings
 Remotes:
     github::mskilab/gUtils,
     github::mskilab/fishHook

@@ -20,7 +20,7 @@ read_vcf_file(
 
 \item{normal_sample}{Name of normal sample as reported in VCF}
 
-\item{caller}{Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba}
+\item{caller}{Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman}
 
 \item{mut_type}{Type of mutations within VCF, supported: snv, indel}
 
@@ -31,6 +31,6 @@ GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and update
 }
 \description{
 Read in a VCF file and convert it to a GRanges object with refactored seq details.
-Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA.
+Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 The VCF file can be either zipped or unzipped.
 }

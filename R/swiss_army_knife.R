@@ -53,7 +53,7 @@
 #' @import VariantAnnotation
 #' @import stringr
 
-
+#' @importFrom librarian shelf
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
 #' @importFrom dplyr sample_n
 #' @importFrom rtracklayer import
@@ -82,7 +82,64 @@ gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=FREQ_TUMOR=P
 }
 
 
+#' @name kit_loadout
+#' @title Build the devgru environment by installing/loading packages
+#'
+#' @description
+#' Single command to install, if needed, and load all packages used in the devgru kit.
+#'
+#' @param update_kit Update all packages even if already installed, default: TRUE
+#'
+#' @export
+kit_loadout <- function(update_kit = T) {
 
+  logo_viz <- "
+#                   ___   ___        ____   ____                          #
+#                    | | |     |   /  |     |   | |   |                   #
+# }}}}------->>>     + | |-+-  |  +   | +-  |-+-  |   |    <<<-------{{{{ #
+#                    | | |     | /    |   | |  \\  |   |                   #
+#                   ---   ---   /      ---      \\  ---                    #
+"
+
+  # Packages for loadout
+  loadout <- c("BSgenome.Hsapiens.UCSC.hg38", "GenomicRanges", "GenomeInfoDb",
+               "data.table", "mskilab-org/gUtils", "VariantAnnotation",
+               "rtracklayer", "Biostrings", "S4Vectors", "dplyr",
+               "stringr", "readr", "ggplot2", "ggsci", "paletteer", "scico",
+               "flextable", "mclust", "parallel", "doParallel", "foreach")
+
+  loadout_string <- "
+  ### GenomicRanges Core ###
+  BSgenome.Hsapiens.UCSC.hg38
+  GenomicRanges
+  GenomeInfoDb
+  data.table
+  mskilab-org/gUtils
+  VariantAnnotation
+  rtracklayer
+  Biostrings
+  S4Vectors
+
+  ### Utility Core ###
+  dplyr
+  stringr
+  readr
+  ggplot2
+  ggsci
+  paletteer
+  scico
+  flextable
+  mclust
+  parallel
+  doParallel
+  foreach
+  "
+  message(logo_viz)
+  message("Building the devgru kit ...")
+  message("Loadout currently includes:\n\t", loadout_string)
+  librarian::shelf(lib = loadout, update_all = update_kit, quiet = T)
+  message("D O N E ...")
+}
 
 # }}}}------->>>
 #

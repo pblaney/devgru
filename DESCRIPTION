@@ -24,7 +24,8 @@ Imports:
     VariantAnnotation,
     stringr,
     S4Vectors,
-    Biostrings
+    Biostrings,
+    librarian
 Remotes:
     github::mskilab/gUtils,
     github::mskilab/fishHook

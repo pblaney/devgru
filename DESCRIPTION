@@ -25,7 +25,9 @@ Imports:
     stringr,
     S4Vectors,
     Biostrings,
-    librarian
+    librarian,
+    doParallel,
+    foreach
 Remotes:
     github::mskilab/gUtils,
     github::mskilab/fishHook

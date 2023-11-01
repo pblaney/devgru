@@ -60,10 +60,13 @@
 #' @importFrom readr read_delim
 #' @importFrom S4Vectors mcols
 #' @importFrom Biostrings toString
+#' @importFrom doParallel registerDoParallel
+#' @importFrom foreach foreach
+#' @importFrom foreach `%dopar%`
 
 
 ## appease R CMD CHECK misunderstanding of data.table syntax by declaring these global variables
-gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=NULL
+gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -343,7 +346,7 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 
   # Set parallel cores parameter
   message("Setting parallel cores to ", threads, " ...")
-  registerDoParallel(cores = threads)
+  doParallel::registerDoParallel(cores = threads)
 
   # First, check if BAM and index exist at the path given
   if(!file.exists(bam_file_path)) {
@@ -375,7 +378,7 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
   chrom_iter_list <- as.character(unique(mut_loci$seqnames))
   possible_colnames <- c("seqnames", "chrom", "start", "pos", "POS", "ref", "REF", "Reference_Allele", "alt", "ALT", "Tumor_Seq_Allele2")
 
-  final_allele_counts <- foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
+  final_allele_counts <- foreach::foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
 
     # Grab the mutation loci per chromosome and prep for use in alleleCounter
     which_colnames <- which(possible_colnames %in% colnames(mut_loci))
@@ -389,7 +392,7 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 
     temp_alleleCounter_locifile <- tempfile(pattern = stringr::str_remove(string = bam_file_path, pattern = "\\.*\\.bam"),
                                             fileext = paste0(".alleleCounter.", chrom_iter_list[x], ".loci.txt"))
-    write.table(x = mut_loci_per_chrom_dt, file = temp_alleleCounter_locifile, row.names = F, col.names = F, sep = "\t", quote = F)
+    data.table::fwrite(x = mut_loci_per_chrom_dt, file =  temp_alleleCounter_locifile, row.names = F, col.names = F, sep = "\t", quote = F)
 
     # Execute command
     alleleCounter_exe <- paste("alleleCounter",

@@ -110,6 +110,7 @@ kit_loadout <- function(update_kit = T) {
 
   loadout_string <- "
   ### GenomicRanges Core ###
+
   BSgenome.Hsapiens.UCSC.hg38
   GenomicRanges
   GenomeInfoDb
@@ -121,6 +122,7 @@ kit_loadout <- function(update_kit = T) {
   S4Vectors
 
   ### Utility Core ###
+
   dplyr
   stringr
   readr
@@ -137,7 +139,7 @@ kit_loadout <- function(update_kit = T) {
   message(logo_viz)
   message("Building the devgru kit ...")
   message("Loadout currently includes:\n\t", loadout_string)
-  librarian::shelf(lib = loadout, update_all = update_kit, quiet = T)
+  librarian::shelf(loadout, update_all = update_kit, quiet = T)
   message("D O N E ...")
 }
 
@@ -320,8 +322,100 @@ get_vaf <- function(vcf_obj, caller, mut_type) {
   return(mut_vaf_and_reads)
 }
 
+# TODO: try to create Rsamtools RSeqLib bamUtils alternative to stay in R
+#' @name get_allele_counts
+#' @title Read in a BAM file, collect read counts for alleles at set of mutation loci using alleleCounter, and convert to data.table object
+#'
+#' @description
+#' Wrapper command to use alleleCounter to read in a BAM file and count all reads supporting each possible allele at set of mutation loci, then convert it to a data.table object with refactored seq details.
+#' The process will be split across each chromosome and then merged for the final output.
+#' Expects the first column to be chromosome name, and 3 other columns to exist in the mutation loci file: pos/start/end, ref/REF/Reference_Allele, alt/ALT/Tumor_Seq_Allele2.
+#'
+#' @param bam_file_path Path to BAM file
+#' @param mut_loci_obj Mutation loci file in data.table or GRanges format, required columns: chrom, pos, ref, alt
+#' @param min_base_qual Minimum base quality required for a read to be counted, default: 20
+#' @param min_map_qual Minimum mapping quality required for a read to be counted, default: 35
+#' @param threads Number of threads to use for parallel execution, default: 1
+#'
+#' @return data.table object with the columns: #CHR, POS, Count_A, Count_C, Count_G, Count_T, Good_depth
+#' @export
+get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, min_map_qual = 35, threads = 1) {
 
+  # Set parallel cores parameter
+  message("Setting parallel cores to ", threads, " ...")
+  registerDoParallel(cores = threads)
 
+  # First, check if BAM and index exist at the path given
+  if(!file.exists(bam_file_path)) {
+    stop(message = "\nInput BAM does not exist at the path given")
+  }
+
+  if(!file.exists(paste0(bam_file_path, ".bai")) & !file.exists(stringr::str_replace(string = bam_file_path, pattern = "\\.bam", replacement ="\\.bai"))) {
+    stop(message = "\nInput BAM .bai index does not at the path given")
+  }
+
+  # Second, check the mutation loci object. If data.table, continue on. If not, convert
+  if(!"data.table" %in% class(mut_loci_obj) & "GRanges" %in% class(mut_loci_obj)) {
+    mut_loci <- gUtils::gr2dt(mut_loci_obj)
+
+  } else if("data.table" %in% class(mut_loci_obj)) {
+    mut_loci <- mut_loci_obj
+
+  } else {
+    # Problem if input VCF object is not correct class
+    stop(message = "\nInput mutation loci object needs to be either data.table or GRanges class")
+  }
+
+  # Finally, check if alleleCounter is on the path
+  if(class(system("alleleCounter -v", intern = TRUE)) != "character") {
+    stop(message = "\nCannot find alleleCounter binary executable on path")
+  }
+
+  # Begin foreach construct to parallelize the alleleCounter command per chromosome and then stitch the results together in a GRanges object
+  chrom_iter_list <- as.character(unique(mut_loci$seqnames))
+  possible_colnames <- c("seqnames", "chrom", "start", "pos", "POS", "ref", "REF", "Reference_Allele", "alt", "ALT", "Tumor_Seq_Allele2")
+
+  final_allele_counts <- foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
+
+    # Grab the mutation loci per chromosome and prep for use in alleleCounter
+    which_colnames <- which(possible_colnames %in% colnames(mut_loci))
+    mut_loci_per_chrom_dt <- mut_loci %>%
+      dplyr::filter(seqnames == chrom_iter_list[x]) %>%
+      dplyr::select(possible_colnames[which_colnames])
+
+    # Now create temporary loci and output file that will be read in as an intermediate file
+    temp_alleleCounter_outfile <- tempfile(pattern = stringr::str_remove(string = bam_file_path, pattern = "\\.*\\.bam"),
+                                           fileext = paste0(".alleleCounter.", chrom_iter_list[x], ".out.txt"))
+
+    temp_alleleCounter_locifile <- tempfile(pattern = stringr::str_remove(string = bam_file_path, pattern = "\\.*\\.bam"),
+                                            fileext = paste0(".alleleCounter.", chrom_iter_list[x], ".loci.txt"))
+    write.table(x = mut_loci_per_chrom_dt, file = temp_alleleCounter_locifile, row.names = F, col.names = F, sep = "\t", quote = F)
+
+    # Execute command
+    alleleCounter_exe <- paste("alleleCounter",
+                               "-b", bam_file_path,
+                               "-o", temp_alleleCounter_outfile,
+                               "-l", temp_alleleCounter_locifile,
+                               "-m", min_base_qual,
+                               "-q", min_map_qual)
+    system(command = alleleCounter_exe, wait = TRUE)
+
+    # After execution of alleleCounter command, read in the temp output file
+    system(command = "sleep 7", wait = TRUE)
+    read_counts <- data.table::fread(file = temp_alleleCounter_outfile,
+                                     sep = "\t")
+
+    # Unlink temps
+    unlink(temp_alleleCounter_outfile)
+    unlink(temp_alleleCounter_locifile)
+
+    # Return output of the foreach loops, each GR obj will be concatenated
+    read_counts
+  }
+
+  # Return combined alleleCount output
+  return(final_allele_counts)
+}
 
 
 

@@ -109,7 +109,8 @@ kit_loadout <- function(update_kit = T) {
                "data.table", "mskilab-org/gUtils", "VariantAnnotation",
                "rtracklayer", "Biostrings", "S4Vectors", "dplyr",
                "stringr", "readr", "ggplot2", "ggsci", "paletteer", "scico",
-               "flextable", "mclust", "parallel", "doParallel", "foreach")
+               "flextable", "mclust", "parallel", "doParallel", "foreach",
+               "R.utils")
 
   loadout_string <- "
   ### GenomicRanges Core ###
@@ -138,6 +139,7 @@ kit_loadout <- function(update_kit = T) {
   parallel
   doParallel
   foreach
+  R.utils
   "
   message(logo_viz)
   message("Building the devgru kit ...")
@@ -387,12 +389,17 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
       dplyr::select(possible_colnames[which_colnames])
 
     # Now create temporary loci and output file that will be read in as an intermediate file
-    temp_alleleCounter_outfile <- tempfile(pattern = stringr::str_remove(string = bam_file_path, pattern = "\\.*\\.bam"),
-                                           fileext = paste0(".alleleCounter.", chrom_iter_list[x], ".out.txt"))
+    temp_alleleCounter_outfile <- tempfile(pattern = stringr::str_remove(string = basename(bam_file_path), pattern = "\\.*\\.bam"),
+                                           fileext = paste0(".temp.alleleCounter.", chrom_iter_list[x], ".out.txt"))
 
-    temp_alleleCounter_locifile <- tempfile(pattern = stringr::str_remove(string = bam_file_path, pattern = "\\.*\\.bam"),
-                                            fileext = paste0(".alleleCounter.", chrom_iter_list[x], ".loci.txt"))
-    data.table::fwrite(x = mut_loci_per_chrom_dt, file =  temp_alleleCounter_locifile, row.names = F, col.names = F, sep = "\t", quote = F)
+    temp_alleleCounter_locifile <- tempfile(pattern = stringr::str_remove(string = basename(bam_file_path), pattern = "\\.*\\.bam"),
+                                            fileext = paste0(".temp.alleleCounter.", chrom_iter_list[x], ".loci.txt"))
+    data.table::fwrite(x = mut_loci_per_chrom_dt,
+                       file =  temp_alleleCounter_locifile,
+                       row.names = FALSE,
+                       col.names = FALSE,
+                       sep = "\t",
+                       quote = FALSE)
 
     # Execute command
     alleleCounter_exe <- paste("alleleCounter",

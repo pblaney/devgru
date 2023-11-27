@@ -782,7 +782,7 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 
 
 #' @name aggregate_these
-#' @title Read in all data files of a specific grep pattern, aggregate them into a single data.table, sorted or unsorted
+#' @title Read in all data files of a specific grep pattern, aggregate them into a single data.table
 #'
 #' @description
 #' Collect all files that match a specific `ls`-style pattern at a specific path, read them into a data.table, then aggregate
@@ -793,13 +793,12 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 #' @param delim delimiter used in files to be aggregated, expected to be same in all files
 #' @param has_header indicate if files have a header line, expected to be same in all files
 #' @param cpus number of cpus for reading in data, used by `data.table::fread()`
-#' @param sort_output indicate if the output data.table should be sorted by genomic coordinate, BEDPE not supported yet
 #' @param add_uniq_id indicate if the output data.table should include a unique identifier column, derived from input file basename
 #'
 #' @return data.table object with all data under preserved column construct
 #' @export
 aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_header = TRUE,
-                            cpus = 1, sort_output = TRUE, add_uniq_id = FALSE) {
+                            cpus = 1, add_uniq_id = FALSE) {
 
   # Find all files at the provided path that match the provided pattern
   input_files_to_aggregate <- list.files(path = path_to_files,
@@ -827,14 +826,17 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
     aggregate_dt <- gUtils::rrbind(aggregate_dt, dt_to_add, as.data.table = T)
   }
 
+  # TODO: The sort functionality is bugged, aggregated file has some sort of mix-and-match of columns
+  # sort_output = TRUE,
+  # #' @param sort_output indicate if the output data.table should be sorted by genomic coordinate, BEDPE not supported yet
   # Sort the output by genomic coordinate if desired
-  if(sort_output) {
-
-    # TODO: BEDPE files don't translate from DT to GR with standard header, likely need gGnome junctions
-    # Convert to GR to run foolproof sorting
-    aggregate_gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(aggregate_dt))
-    aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
-  }
+  #if(sort_output) {
+  #
+  #  # TODO: BEDPE files don't translate from DT to GR with standard header, likely need gGnome junctions
+  #  # Convert to GR to run foolproof sorting
+  #  aggregate_gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(aggregate_dt))
+  #  aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
+  #}
   return(aggregate_dt)
 }
 

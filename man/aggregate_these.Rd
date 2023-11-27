@@ -2,7 +2,7 @@
 % Please edit documentation in R/swiss_army_knife.R
 \name{aggregate_these}
 \alias{aggregate_these}
-\title{Read in all data files of a specific grep pattern, aggregate them into a single data.table, sorted or unsorted}
+\title{Read in all data files of a specific grep pattern, aggregate them into a single data.table}
 \usage{
 aggregate_these(
   path_to_files,
@@ -10,7 +10,6 @@ aggregate_these(
   delim = "\\t",
   has_header = TRUE,
   cpus = 1,
-  sort_output = TRUE,
   add_uniq_id = FALSE
 )
 }
@@ -24,8 +23,6 @@ aggregate_these(
 \item{has_header}{indicate if files have a header line, expected to be same in all files}
 
 \item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}}
-
-\item{sort_output}{indicate if the output data.table should be sorted by genomic coordinate, BEDPE not supported yet}
 
 \item{add_uniq_id}{indicate if the output data.table should include a unique identifier column, derived from input file basename}
 }

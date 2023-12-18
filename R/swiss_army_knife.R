@@ -212,7 +212,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #' For clarity, the read support for the VAF will be extracted as well.
 #' Currently supports somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 #'
-#' @param vcf_obj VCF file in data.table or GRanges format, supported: mutect, strelka, varscan, svaba, caveman
+#' @param vcf_obj VCF file in data.table or GRanges format
 #' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman
 #' @param mut_type Type of mutations within VCF, supported: snv, indel
 #'
@@ -378,15 +378,15 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 
   # Begin foreach construct to parallelize the alleleCounter command per chromosome and then stitch the results together in a GRanges object
   chrom_iter_list <- as.character(unique(mut_loci$seqnames))
-  possible_colnames <- c("seqnames", "chrom", "start", "pos", "POS", "ref", "REF", "Reference_Allele", "alt", "ALT", "Tumor_Seq_Allele2")
+  possible_col_names <- c("seqnames", "chrom", "start", "pos", "POS", "ref", "REF", "Reference_Allele", "alt", "ALT", "Tumor_Seq_Allele2")
 
   final_allele_counts <- foreach::foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
 
     # Grab the mutation loci per chromosome and prep for use in alleleCounter
-    which_colnames <- which(possible_colnames %in% colnames(mut_loci))
+    which_col_names <- which(possible_col_names %in% colnames(mut_loci))
     mut_loci_per_chrom_dt <- mut_loci %>%
       dplyr::filter(seqnames == chrom_iter_list[x]) %>%
-      dplyr::select(possible_colnames[which_colnames])
+      dplyr::select(possible_col_names[which_col_names])
 
     # Now create temporary loci and output file that will be read in as an intermediate file
     temp_alleleCounter_outfile <- tempfile(pattern = stringr::str_remove(string = basename(bam_file_path), pattern = "\\.*\\.bam"),
@@ -428,6 +428,119 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 }
 
 
+#' @name get_clonal_cnv_profile
+#' @title Read in CNV profile DT of various flavors and extract a simplified clonal profile
+#'
+#' @description
+#' Given a data.table or GRanges CNV object, extract the clonal CNV profile.
+#' Any segment with a non-rounded value within 0.2 of the next integer value is rounded to that value.
+#' The output will data.table will contain 6 columns: sample, seqnames, start, end, total, minor
+#' The `sample` is either user-provided or row count placeholder
+#' Currently supports CNV calls from Battenberg and FACETS
+#'
+#' @param cnv_obj CNV file in data.table or GRanges format
+#' @param caller Name of caller that generated input CNV to be converted, supported: Battenberg and FACETS
+#' @param sample_id Unique identifier to add to output, default: NULL
+#'
+#' @return ata.table object with rounded clonal CNV segments
+get_clonal_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
+
+  # First, check the CNV object. If data.table, continue on. If not, convert
+  if(!"data.table" %in% class(cnv_obj) & "GRanges" %in% class(cnv_obj)) {
+    cnv_dt <- gUtils::gr2dt(cnv_obj)
+
+  } else if("data.table" %in% class(cnv_obj)) {
+    cnv_dt <- cnv_obj
+
+  } else {
+    # Problem if input CNV object is not correct class
+    stop(message = "\nInput CNV object needs to be either data.table or GRanges class")
+  }
+
+  # Create ID string for sample column
+  sample_string <- dplyr::case_when(is.null(sample_id) ~ paste0("sample_X_", caller),
+                                    !is.null(sample_id) ~ as.character(sample_id))
+
+  # Case 1: FACETS directly reports total and minor copy number,
+  #         only consideration is the occasional NA for minor allele as a result of low het count
+  if(caller == "facets") {
+    clonal_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
+                                             "seqnames" = cnv_dt$seqnames,
+                                             "start" = cnv_dt$start,
+                                             "end" = cnv_dt$end,
+                                             "total" = cnv_dt$tcn.em,
+                                             "minor" = dplyr::case_when(is.na(cnv_dt$lcn.em) ~ 0,
+                                                                        !is.na(cnv_dt$lcn.em) ~ cnv_dt$lcn.em))
+
+    # TODO: this will be depreciated when issues with Battenberg are addressed
+    # Case 2: Battenberg (fit.cnv) reports both total and major/minor alleles in rounded and non-rounded format
+  } else if(caller == "battenberg.fit") {
+
+    # First, need to account for negative non-rounded values
+    bb_cnv_dt <- cnv_dt
+
+    # Get the correct value of the minor allele, is occasionally negative
+    corrected_minor_allele <- pmax(bb_cnv_dt$minor_allele_nonrounded, 0)
+
+    # Loop through the Battenberg minor allele segments
+    rounded_bb_minor <- c()
+    for(i in 1:length(corrected_minor_allele)) {
+      # Gather clonally rounded minor alleles
+      rounded_bb_minor[i] <- dplyr::case_when(corrected_minor_allele[i] < 0.2 ~ 0,
+                                              between(x = corrected_minor_allele[i], lower = 0.2, upper = 0.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 0.8, upper = 1.2) ~ 1,
+                                              between(x = corrected_minor_allele[i], lower = 1.2, upper = 1.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 1.8, upper = 2.2) ~ 2,
+                                              between(x = corrected_minor_allele[i], lower = 2.2, upper = 2.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 2.8, upper = 3.2) ~ 3,
+                                              between(x = corrected_minor_allele[i], lower = 3.2, upper = 3.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 3.8, upper = 4.2) ~ 4,
+                                              between(x = corrected_minor_allele[i], lower = 4.2, upper = 4.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 4.8, upper = 5.2) ~ 5,
+                                              between(x = corrected_minor_allele[i], lower = 5.2, upper = 5.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], lower = 5.8, upper = 6.2) ~ 6,
+                                              between(x = corrected_minor_allele[i], lower = 6.2, upper = 6.8) ~ corrected_minor_allele[i],
+                                              corrected_minor_allele[i] > 7 ~ round(x = corrected_minor_allele[i], digits = 0))
+    }
+
+    # Get the correct value of the minor allele, is occasionally negative
+    corrected_major_allele <- pmax(bb_cnv_dt$major_allele_nonrounded, 0)
+
+    # Now calculate the correct non-rounded total copy number
+    corrected_total_cn <- corrected_major_allele + corrected_minor_allele
+
+    # Loop through the Battenberg total CN segments
+    rounded_bb_total_cn <- c()
+    for(i in 1:length(corrected_total_cn)) {
+      # Gather clonally rounded minor alleles
+      rounded_bb_total_cn[i] <- dplyr::case_when(corrected_total_cn[i] < 0.2 ~ 0,
+                                                 between(x = corrected_total_cn[i], lower = 0.2, upper = 0.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 0.8, upper = 1.2) ~ 1,
+                                                 between(x = corrected_total_cn[i], lower = 1.2, upper = 1.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 1.8, upper = 2.2) ~ 2,
+                                                 between(x = corrected_total_cn[i], lower = 2.2, upper = 2.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 2.8, upper = 3.2) ~ 3,
+                                                 between(x = corrected_total_cn[i], lower = 3.2, upper = 3.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 3.8, upper = 4.2) ~ 4,
+                                                 between(x = corrected_total_cn[i], lower = 4.2, upper = 4.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 4.8, upper = 5.2) ~ 5,
+                                                 between(x = corrected_total_cn[i], lower = 5.2, upper = 5.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], lower = 5.8, upper = 6.2) ~ 6,
+                                                 between(x = corrected_total_cn[i], lower = 6.2, upper = 6.8) ~ corrected_total_cn[i],
+                                                 corrected_total_cn[i] > 7 ~ round(x = corrected_total_cn[i], digits = 0))
+    }
+
+    clonal_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
+                                             "seqnames" = cnv_dt$seqnames,
+                                             "start" = cnv_dt$start,
+                                             "end" = cnv_dt$end,
+                                             "total" = rounded_bb_total_cn,
+                                             "minor" = rounded_bb_minor)
+  }
+
+  # Return the final profile
+  return(clonal_profile)
+}
 
 
 
@@ -489,13 +602,12 @@ get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlength
   return(genes)
 }
 
-# TODO: take both zipped and unzipped files
 #' @name read_maf_file
 #' @title Read MAF file and convert to GRanges object
 #'
 #' @description
 #' Read in a MAF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
-#' The MAF files must be unzipped.
+#' The MAF file can be either zipped or unzipped.
 #' For more specific MAFtools operations, see `maftools::read.maf()`
 #'
 #' @param maf_file_path Path to MAF file
@@ -518,22 +630,29 @@ read_maf_file <- function(maf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
 #'
 #' @description
 #' Read in a BED file and convert it to a GRanges object with refactored seq details.
-#' Expects the first 3 columns as chromosome, start, end; If more columns are present, user must provide column names.
-#' The BED file must be unzipped.
+#' Expects the first 3 columns as chromosome, start, end; However column names are not necessary
+#' The BED file can be either zipped or unzipped.
 #'
 #' @param bed_file_path Path to BED file
-#' @param colnames Names for additional columns in BED file
+#' @param has_header Indicate if files have a header line, expected to be same in all files
+#' @param col_names Names for columns in BED file
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
-read_bed_file <- function(bed_file_path, colnames = NULL, seq_lengths = gUtils::hg_seqlengths()) {
+read_bed_file <- function(bed_file_path, has_header = TRUE, col_names = NULL, seq_lengths = gUtils::hg_seqlengths()) {
 
-  bed_df <- readr::read_delim(file = bed_file_path,
-                              delim = "\t",
-                              col_names = c("chr", "start", "end", colnames),
-                              show_col_types = F)
-  bed_dt <- data.table::as.data.table(x = bed_df)
+  # Read in file with options around header/column names
+  if(!is.null(col_names)) {
+    bed_dt <- data.table::fread(bed_file_path,
+                                sep = "\t",
+                                header = has_header,
+                                col.names = col_names)
+  } else {
+    bed_dt <- data.table::fread(bed_file_path,
+                                sep = "\t",
+                                header = has_header)
+  }
   bed_gr <- gUtils::dt2gr(bed_dt)
 
   # Sort out seqinfo/levels/lengths mess

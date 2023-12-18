@@ -6,14 +6,17 @@
 \usage{
 read_bed_file(
   bed_file_path,
-  colnames = NULL,
+  has_header = TRUE,
+  col_names = NULL,
   seq_lengths = gUtils::hg_seqlengths()
 )
 }
 \arguments{
 \item{bed_file_path}{Path to BED file}
 
-\item{colnames}{Names for additional columns in BED file}
+\item{has_header}{Indicate if files have a header line, expected to be same in all files}
+
+\item{col_names}{Names for columns in BED file}
 
 \item{seq_lengths}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
 }
@@ -22,6 +25,6 @@ GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames
 }
 \description{
 Read in a BED file and convert it to a GRanges object with refactored seq details.
-Expects the first 3 columns as chromosome, start, end; If more columns are present, user must provide column names.
-The BED file must be unzipped.
+Expects the first 3 columns as chromosome, start, end; However column names are not necessary
+The BED file can be either zipped or unzipped.
 }

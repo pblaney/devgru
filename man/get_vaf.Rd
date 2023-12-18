@@ -7,7 +7,7 @@
 get_vaf(vcf_obj, caller, mut_type)
 }
 \arguments{
-\item{vcf_obj}{VCF file in data.table or GRanges format, supported: mutect, strelka, varscan, svaba, caveman}
+\item{vcf_obj}{VCF file in data.table or GRanges format}
 
 \item{caller}{Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman}
 

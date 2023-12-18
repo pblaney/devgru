@@ -16,6 +16,6 @@ GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths,
 }
 \description{
 Read in a MAF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
-The MAF files must be unzipped.
+The MAF file can be either zipped or unzipped.
 For more specific MAFtools operations, see \code{maftools::read.maf()}
 }

@@ -611,13 +611,22 @@ get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlength
 #' For more specific MAFtools operations, see `maftools::read.maf()`
 #'
 #' @param maf_file_path Path to MAF file
+#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 2
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
-read_maf_file <- function(maf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
+read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths()) {
 
-  maf_dt <- data.table::fread(maf_file_path)
+  # Set available threads
+  doParallel::registerDoParallel(cores = cpus)
+
+  # Read in MAF with extra speed
+  maf_dt <- data.table::fread(input = maf_file_path,
+                              sep = "\t",
+                              header = TRUE,
+                              stringsAsFactors = FALSE,
+                              nThread = cpus)
   maf_gr <- gUtils::dt2gr(maf_dt)
 
   # Sort out seqinfo/levels/lengths mess
@@ -634,25 +643,24 @@ read_maf_file <- function(maf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
 #' The BED file can be either zipped or unzipped.
 #'
 #' @param bed_file_path Path to BED file
-#' @param has_header Indicate if files have a header line, expected to be same in all files
-#' @param col_names Names for columns in BED file
+#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
+#' @param additional_col_names Names for additional columns in BED file, beyond first three
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
-read_bed_file <- function(bed_file_path, has_header = TRUE, col_names = NULL, seq_lengths = gUtils::hg_seqlengths()) {
+read_bed_file <- function(bed_file_path, cpus = 1, additional_col_names = NULL, seq_lengths = gUtils::hg_seqlengths()) {
 
-  # Read in file with options around header/column names
-  if(!is.null(col_names)) {
-    bed_dt <- data.table::fread(bed_file_path,
-                                sep = "\t",
-                                header = has_header,
-                                col.names = col_names)
-  } else {
-    bed_dt <- data.table::fread(bed_file_path,
-                                sep = "\t",
-                                header = has_header)
-  }
+  # Set available threads
+  doParallel::registerDoParallel(cores = cpus)
+
+  # Read in file with options around additional column names
+  bed_dt <- data.table::fread(input = bed_file_path,
+                              sep = "\t",
+                              header = TRUE,
+                              col.names = c("chr", "start", "end", additional_col_names),
+                              stringsAsFactors = FALSE,
+                              nThread = cpus)
   bed_gr <- gUtils::dt2gr(bed_dt)
 
   # Sort out seqinfo/levels/lengths mess
@@ -918,6 +926,9 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 #' @export
 aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_header = TRUE,
                             cpus = 1, add_uniq_id = FALSE) {
+
+  # Set available threads
+  doParallel::registerDoParallel(cores = cpus)
 
   # Find all files at the provided path that match the provided pattern
   input_files_to_aggregate <- list.files(path = path_to_files,

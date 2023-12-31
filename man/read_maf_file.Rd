@@ -4,10 +4,12 @@
 \alias{read_maf_file}
 \title{Read MAF file and convert to GRanges object}
 \usage{
-read_maf_file(maf_file_path, seq_lengths = gUtils::hg_seqlengths())
+read_maf_file(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths())
 }
 \arguments{
 \item{maf_file_path}{Path to MAF file}
+
+\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}, default: 2}
 
 \item{seq_lengths}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
 }

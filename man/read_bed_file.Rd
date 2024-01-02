@@ -6,17 +6,17 @@
 \usage{
 read_bed_file(
   bed_file_path,
-  cpus = 1,
   additional_col_names = NULL,
+  cpus = 1,
   seq_lengths = gUtils::hg_seqlengths()
 )
 }
 \arguments{
 \item{bed_file_path}{Path to BED file}
 
-\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}, default: 1}
-
 \item{additional_col_names}{Names for additional columns in BED file, beyond first three}
+
+\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}, default: 1}
 
 \item{seq_lengths}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
 }

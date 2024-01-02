@@ -178,9 +178,13 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   }
 
   # Now start to reset seqnames
-  gr <- GenomeInfoDb::keepSeqlevels(x = gr,
-                                    value = names(new_levels)[1:24],
+  gr <- GenomeInfoDb::dropSeqlevels(x = gr,
+                                    value = GenomeInfoDb::seqlevels(gr)[!GenomeInfoDb::seqlevels(gr) %in% names(new_levels)[1:24]],
                                     pruning.mode = "coarse")
+
+  # Now start to reset seqnames
+  gr@seqnames@values <- factor(x = gr@seqnames@values,
+                               levels =  names(new_levels)[1:24][GenomeInfoDb::seqlevels(gr) %in% names(new_levels)[1:24]])
 
   # Sort the new seqinfo
   gr@seqinfo <- GenomeInfoDb::sortSeqlevels(gr@seqinfo, X.is.sexchrom = T)
@@ -637,24 +641,33 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
 #' The BED file can be either zipped or unzipped.
 #'
 #' @param bed_file_path Path to BED file
-#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
 #' @param additional_col_names Names for additional columns in BED file, beyond first three
+#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
-read_bed_file <- function(bed_file_path, cpus = 1, additional_col_names = NULL, seq_lengths = gUtils::hg_seqlengths()) {
+read_bed_file <- function(bed_file_path, additional_col_names = NULL, cpus = 1, seq_lengths = gUtils::hg_seqlengths()) {
 
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
 
   # Read in file with options around additional column names
-  bed_dt <- data.table::fread(input = bed_file_path,
-                              sep = "\t",
-                              header = TRUE,
-                              col.names = c("chr", "start", "end", additional_col_names),
-                              stringsAsFactors = FALSE,
-                              nThread = cpus)
+  if(is.null(additional_col_names)) {
+    bed_dt <- data.table::fread(input = bed_file_path,
+                                sep = "\t",
+                                header = TRUE,
+                                stringsAsFactors = FALSE,
+                                nThread = cpus)
+
+  } else if(!is.null(additional_col_names)) {
+    bed_dt <- data.table::fread(input = bed_file_path,
+                                sep = "\t",
+                                header = TRUE,
+                                col.names = c("chr", "start", "end", additional_col_names),
+                                stringsAsFactors = FALSE,
+                                nThread = cpus)
+  }
   bed_gr <- gUtils::dt2gr(bed_dt)
 
   # Sort out seqinfo/levels/lengths mess

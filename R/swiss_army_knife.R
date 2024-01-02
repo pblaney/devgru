@@ -180,16 +180,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   # Now start to reset seqnames
   gr <- GenomeInfoDb::keepSeqlevels(x = gr,
                                     value = names(new_levels)[1:24],
-                                    pruning.mode = "course")
-  #gr@seqnames@values <- factor(x = gr@seqnames@values,
-  #                             levels = names(new_levels)[1:24])
-
-  # Clean up any NAs left in the seqname values
-  #rando_seqname_replacements <- dplyr::sample_n(tbl = as.data.frame(levels(gr@seqnames@values)),
-  #                                              size = sum(is.na(gr@seqnames@values)))
-  #colnames(rando_seqname_replacements) <- "replacements"
-
-  #gr@seqnames@values[is.na(gr@seqnames@values)] <- rando_seqname_replacements$replacements
+                                    pruning.mode = "coarse")
 
   # Sort the new seqinfo
   gr@seqinfo <- GenomeInfoDb::sortSeqlevels(gr@seqinfo, X.is.sexchrom = T)

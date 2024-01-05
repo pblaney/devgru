@@ -30,5 +30,5 @@ Imports:
     foreach,
     R.utils
 Remotes:
-    github::mskilab/gUtils,
-    github::mskilab/fishHook
+    github::mskilab-org/gUtils,
+    github::mskilab-org/fishHook

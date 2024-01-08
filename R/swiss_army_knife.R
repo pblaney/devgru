@@ -464,12 +464,12 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
   #         only consideration is the occasional NA for minor allele as a result of low het count
   if(caller == "facets") {
     corrected_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
-                                             "seqnames" = cnv_dt$seqnames,
-                                             "start" = cnv_dt$start,
-                                             "end" = cnv_dt$end,
-                                             "total" = cnv_dt$tcn.em,
-                                             "minor" = dplyr::case_when(is.na(cnv_dt$lcn.em) ~ 0,
-                                                                        !is.na(cnv_dt$lcn.em) ~ cnv_dt$lcn.em))
+                                                "seqnames" = cnv_dt$seqnames,
+                                                "start" = cnv_dt$start,
+                                                "end" = cnv_dt$end,
+                                                "total" = cnv_dt$tcn.em,
+                                                "minor" = dplyr::case_when(is.na(cnv_dt$lcn.em) ~ 0,
+                                                                          !is.na(cnv_dt$lcn.em) ~ cnv_dt$lcn.em))
 
     # TODO: this will be depreciated when issues with Battenberg are addressed
     # Case 2: Battenberg (fit.cnv) reports both total and major/minor alleles in rounded and non-rounded format
@@ -486,19 +486,19 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
     for(i in 1:length(corrected_minor_allele)) {
       # Gather clonally rounded minor alleles
       rounded_bb_minor[i] <- dplyr::case_when(corrected_minor_allele[i] < 0.2 ~ 0,
-                                              between(x = corrected_minor_allele[i], lower = 0.2, upper = 0.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 0.8, upper = 1.2) ~ 1,
-                                              between(x = corrected_minor_allele[i], lower = 1.2, upper = 1.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 1.8, upper = 2.2) ~ 2,
-                                              between(x = corrected_minor_allele[i], lower = 2.2, upper = 2.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 2.8, upper = 3.2) ~ 3,
-                                              between(x = corrected_minor_allele[i], lower = 3.2, upper = 3.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 3.8, upper = 4.2) ~ 4,
-                                              between(x = corrected_minor_allele[i], lower = 4.2, upper = 4.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 4.8, upper = 5.2) ~ 5,
-                                              between(x = corrected_minor_allele[i], lower = 5.2, upper = 5.8) ~ corrected_minor_allele[i],
-                                              between(x = corrected_minor_allele[i], lower = 5.8, upper = 6.2) ~ 6,
-                                              between(x = corrected_minor_allele[i], lower = 6.2, upper = 6.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 0.2, right = 0.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 0.8, right = 1.2) ~ 1,
+                                              between(x = corrected_minor_allele[i], left = 1.2, right = 1.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 1.8, right = 2.2) ~ 2,
+                                              between(x = corrected_minor_allele[i], left = 2.2, right = 2.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 2.8, right = 3.2) ~ 3,
+                                              between(x = corrected_minor_allele[i], left = 3.2, right = 3.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 3.8, right = 4.2) ~ 4,
+                                              between(x = corrected_minor_allele[i], left = 4.2, right = 4.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 4.8, right = 5.2) ~ 5,
+                                              between(x = corrected_minor_allele[i], left = 5.2, right = 5.8) ~ corrected_minor_allele[i],
+                                              between(x = corrected_minor_allele[i], left = 5.8, right = 6.2) ~ 6,
+                                              between(x = corrected_minor_allele[i], left = 6.2, right = 6.8) ~ corrected_minor_allele[i],
                                               corrected_minor_allele[i] > 7 ~ round(x = corrected_minor_allele[i], digits = 0))
     }
 
@@ -513,19 +513,19 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
     for(i in 1:length(corrected_total_cn)) {
       # Gather clonally rounded minor alleles
       rounded_bb_total_cn[i] <- dplyr::case_when(corrected_total_cn[i] < 0.2 ~ 0,
-                                                 between(x = corrected_total_cn[i], lower = 0.2, upper = 0.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 0.8, upper = 1.2) ~ 1,
-                                                 between(x = corrected_total_cn[i], lower = 1.2, upper = 1.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 1.8, upper = 2.2) ~ 2,
-                                                 between(x = corrected_total_cn[i], lower = 2.2, upper = 2.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 2.8, upper = 3.2) ~ 3,
-                                                 between(x = corrected_total_cn[i], lower = 3.2, upper = 3.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 3.8, upper = 4.2) ~ 4,
-                                                 between(x = corrected_total_cn[i], lower = 4.2, upper = 4.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 4.8, upper = 5.2) ~ 5,
-                                                 between(x = corrected_total_cn[i], lower = 5.2, upper = 5.8) ~ corrected_total_cn[i],
-                                                 between(x = corrected_total_cn[i], lower = 5.8, upper = 6.2) ~ 6,
-                                                 between(x = corrected_total_cn[i], lower = 6.2, upper = 6.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 0.2, right = 0.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 0.8, right = 1.2) ~ 1,
+                                                 between(x = corrected_total_cn[i], left = 1.2, right = 1.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 1.8, right = 2.2) ~ 2,
+                                                 between(x = corrected_total_cn[i], left = 2.2, right = 2.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 2.8, right = 3.2) ~ 3,
+                                                 between(x = corrected_total_cn[i], left = 3.2, right = 3.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 3.8, right = 4.2) ~ 4,
+                                                 between(x = corrected_total_cn[i], left = 4.2, right = 4.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 4.8, right = 5.2) ~ 5,
+                                                 between(x = corrected_total_cn[i], left = 5.2, right = 5.8) ~ corrected_total_cn[i],
+                                                 between(x = corrected_total_cn[i], left = 5.8, right = 6.2) ~ 6,
+                                                 between(x = corrected_total_cn[i], left = 6.2, right = 6.8) ~ corrected_total_cn[i],
                                                  corrected_total_cn[i] > 7 ~ round(x = corrected_total_cn[i], digits = 0))
     }
 

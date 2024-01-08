@@ -463,7 +463,7 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
   # Case 1: FACETS directly reports total and minor copy number,
   #         only consideration is the occasional NA for minor allele as a result of low het count
   if(caller == "facets") {
-    clonal_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
+    corrected_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
                                              "seqnames" = cnv_dt$seqnames,
                                              "start" = cnv_dt$start,
                                              "end" = cnv_dt$end,

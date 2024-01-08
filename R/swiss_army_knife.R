@@ -52,10 +52,10 @@
 #' @import data.table
 #' @import VariantAnnotation
 #' @import stringr
+#' @import dplyr
 
 #' @importFrom librarian shelf
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
-#' @importFrom dplyr sample_n
 #' @importFrom rtracklayer import
 #' @importFrom readr read_delim
 #' @importFrom S4Vectors mcols
@@ -426,11 +426,11 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 }
 
 
-#' @name get_clonal_cnv_profile
-#' @title Read in CNV profile DT of various flavors and extract a simplified clonal profile
+#' @name get_corrected_cnv_profile
+#' @title Read in CNV profile DT of various flavors and extract a corrected profile
 #'
 #' @description
-#' Given a data.table or GRanges CNV object, extract the clonal CNV profile.
+#' Given a data.table or GRanges CNV object, extract the corrected CNV profile.
 #' Any segment with a non-rounded value within 0.2 of the next integer value is rounded to that value.
 #' The output will data.table will contain 6 columns: sample, seqnames, start, end, total, minor
 #' The `sample` is either user-provided or row count placeholder
@@ -440,8 +440,9 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 #' @param caller Name of caller that generated input CNV to be converted, supported: Battenberg and FACETS
 #' @param sample_id Unique identifier to add to output, default: NULL
 #'
-#' @return ata.table object with rounded clonal CNV segments
-get_clonal_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
+#' @return data.table object with corrected CNV segments
+#' @export
+get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 
   # First, check the CNV object. If data.table, continue on. If not, convert
   if(!"data.table" %in% class(cnv_obj) & "GRanges" %in% class(cnv_obj)) {
@@ -528,16 +529,16 @@ get_clonal_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
                                                  corrected_total_cn[i] > 7 ~ round(x = corrected_total_cn[i], digits = 0))
     }
 
-    clonal_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
-                                             "seqnames" = cnv_dt$seqnames,
-                                             "start" = cnv_dt$start,
-                                             "end" = cnv_dt$end,
-                                             "total" = rounded_bb_total_cn,
-                                             "minor" = rounded_bb_minor)
-  }
+    corrected_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),
+                                                "seqnames" = cnv_dt$seqnames,
+                                                "start" = cnv_dt$start,
+                                                "end" = cnv_dt$end,
+                                                "total" = rounded_bb_total_cn,
+                                                "minor" = rounded_bb_minor)
+    }
 
   # Return the final profile
-  return(clonal_profile)
+  return(corrected_profile)
 }
 
 

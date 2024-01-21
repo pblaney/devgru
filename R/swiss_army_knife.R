@@ -669,6 +669,21 @@ read_bed_file <- function(bed_file_path, additional_col_names = NULL, cpus = 1, 
                                 stringsAsFactors = FALSE,
                                 nThread = cpus)
   }
+
+  # TODO: maybe build internal function report the detected input ref type
+  # Edge Case: Check for use of 23/24 for chrX/chrY
+  # Try to find "chromosome" column
+  chromosome_col <- which(colnames(bed_dt) %in% c("chrom", "#chr", "seqnames", "chr"))
+  chromosome_set <- bed_dt %>% dplyr::select(colnames(bed_dt)[chromosome_col]) %>% unique()
+  if(23 %in% chromosome_set[[colnames(bed_dt)[chromosome_col]]]) {
+    message("Chromosome `23` detected ...\nConverting to `X`")
+    recode(bed_dt[[colnames(bed_dt)[chromosome_col]]], `23` = "X", .default = as.character(bed_dt[[colnames(bed_dt)[chromosome_col]]]))
+  }
+  if(24 %in% chromosome_set[[colnames(bed_dt)[chromosome_col]]]) {
+    message("Chromosome `24` detected ...\nConverting to `Y`")
+    recode(bed_dt[[colnames(bed_dt)[chromosome_col]]], `24` = "Y", .default = as.character(bed_dt[[colnames(bed_dt)[chromosome_col]]]))
+  }
+
   bed_gr <- gUtils::dt2gr(bed_dt)
 
   # Sort out seqinfo/levels/lengths mess

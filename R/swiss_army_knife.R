@@ -642,46 +642,64 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
 #' The BED file can be either zipped or unzipped.
 #'
 #' @param bed_file_path Path to BED file
+#' @param has_header Does BED file have header line
 #' @param additional_col_names Names for additional columns in BED file, beyond first three
 #' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
-read_bed_file <- function(bed_file_path, additional_col_names = NULL, cpus = 1, seq_lengths = gUtils::hg_seqlengths()) {
+read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_names = NULL, cpus = 1, seq_lengths = gUtils::hg_seqlengths()) {
 
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
 
-  # Read in file with options around additional column names
-  if(is.null(additional_col_names)) {
+  # Read in file with options to account for various combinations of header/columns
+  # Case 1: no header
+  if(has_header == F) {
     bed_dt <- data.table::fread(input = bed_file_path,
                                 sep = "\t",
-                                header = TRUE,
+                                header = has_header,
                                 stringsAsFactors = FALSE,
                                 nThread = cpus)
 
-  } else if(!is.null(additional_col_names)) {
+    # Subcase condition 1: only 3 columns
+    if(ncol(bed_dt) == 3 & is.null(additional_col_names)) {
+      colnames(bed_dt) <- c("chr", "start", "end")
+    # Subcase condition 2: more than 3 columns, no additional names given
+    } else if(ncol(bed_dt) > 3 & is.null(additional_col_names)) {
+      colnames(bed_dt)[1:3] <- c("chr", "start", "end")
+    # Subcase condition 3: more than 3 columns, additional names given
+    } else if(ncol(bed_dt) > 3 & !is.null(additional_col_names)) {
+      colnames(bed_dt) <- c("chr", "start", "end", additional_col_names)
+    }
+
+  # Case 2: has a header
+  } else if(has_header == T) {
     bed_dt <- data.table::fread(input = bed_file_path,
                                 sep = "\t",
-                                header = TRUE,
-                                col.names = c("chr", "start", "end", additional_col_names),
+                                header = has_header,
                                 stringsAsFactors = FALSE,
                                 nThread = cpus)
+
+    # Subcase condition 1: only 3 columns
+    if(ncol(bed_dt) == 3 & is.null(additional_col_names)) {
+      colnames(bed_dt) <- c("chr", "start", "end")
+      # Subcase condition 2: more than 3 columns
+    } else if(ncol(bed_dt) > 3 & is.null(additional_col_names)) {
+      colnames(bed_dt)[1:3] <- c("chr", "start", "end")
+    }
   }
 
-  # TODO: maybe build internal function report the detected input ref type
   # Edge Case: Check for use of 23/24 for chrX/chrY
-  # Try to find "chromosome" column
-  chromosome_col <- which(colnames(bed_dt) %in% c("chrom", "#chr", "seqnames", "chr"))
-  chromosome_set <- bed_dt %>% dplyr::select(colnames(bed_dt)[chromosome_col]) %>% unique()
-  if(23 %in% chromosome_set[[colnames(bed_dt)[chromosome_col]]]) {
-    message("Chromosome `23` detected ...\nConverting to `X` ...")
-    bed_dt[[colnames(bed_dt)[chromosome_col]]] <- recode(bed_dt[[colnames(bed_dt)[chromosome_col]]], `23` = "X", .default = as.character(bed_dt[[colnames(bed_dt)[chromosome_col]]]))
+  chromosome_set <- unique(bed_dt$chr)
+  if(23 %in% chromosome_set) {
+    message("Chromosome `23` detected ...\nConverting to `chrX` ...")
+    bed_dt$chr <- dplyr::recode(bed_dt$chr, `23` = "X", .default = as.character(bed_dt$chr))
   }
-  if(24 %in% chromosome_set[[colnames(bed_dt)[chromosome_col]]]) {
-    message("Chromosome `24` detected ...\nConverting to `Y` ...")
-    bed_dt[[colnames(bed_dt)[chromosome_col]]] <- recode(bed_dt[[colnames(bed_dt)[chromosome_col]]], `24` = "Y", .default = as.character(bed_dt[[colnames(bed_dt)[chromosome_col]]]))
+  if(24 %in% chromosome_set) {
+    message("Chromosome `24` detected ...\nConverting to `chrY` ...")
+    bed_dt$chr <- dplyr::recode(bed_dt$chr, `24` = "Y", .default = as.character(bed_dt$chr))
   }
 
   bed_gr <- gUtils::dt2gr(bed_dt)
@@ -697,13 +715,14 @@ read_bed_file <- function(bed_file_path, additional_col_names = NULL, cpus = 1, 
 #' @description
 #' Read in a VCF file and convert it to a GRanges object with refactored seq details.
 #' Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
+#' Also supports conversion of germline SNP/InDel VCF from DeepVariant.
 #' The VCF file can be either zipped or unzipped.
 #'
 #' @param vcf_file_path Path to VCF file
 #' @param tumor_sample Name of tumor sample as reported in VCF
 #' @param normal_sample Name of normal sample as reported in VCF
-#' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman
-#' @param mut_type Type of mutations within VCF, supported: snv, indel
+#' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman, deepvariant
+#' @param mut_type Type of mutations within VCF, supported: snv, indel, snp
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
 #' @return GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
@@ -721,7 +740,6 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
   # remove names of range rows
   names(vcf_gr_base) <- NULL
 
-  # TODO: parametrize this step to distinguish somatic vs germline input i.e. 2 sample columns vs 1
   # Have user provide tumor_sample and normal_sample
   # Create metadata column with patient and sample name
   vcf_query_ids <- vcf_va@metadata$header@samples
@@ -734,9 +752,16 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
   # Add column for name of caller
   vcf_gr_base$CALLER <- caller
 
-  # TODO: Sanity Check: Do VCF query IDs match user-provided tumor/normal parameters?
-  # in germline only 1 so length should be 1 and only normal_sample should be given
-  if(caller %in% c("mutect", "svaba") & tumor_sample %in% vcf_query_ids & normal_sample %in% vcf_query_ids) {
+  # Sanity Check: Do VCF query IDs match user-provided tumor/normal parameters?
+  # Check if germline first then somatic
+  # DeepVariant only uses normal sample for germline
+  if(caller == "deepvariant" & is.null(tumor_sample) & !is.null(normal_sample)) {
+    vcf_normal_sample_index <- 1
+
+    vcf_gr_base$PATIENT <- normal_sample
+    vcf_gr_base$NORMAL <- normal_sample
+
+  } else if(caller %in% c("mutect", "svaba") & tumor_sample %in% vcf_query_ids & normal_sample %in% vcf_query_ids) {
     vcf_tumor_sample_index <- which(tumor_sample == vcf_query_ids)
     vcf_normal_sample_index <- which(normal_sample == vcf_query_ids)
 
@@ -773,13 +798,18 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
     vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))  # Needed for SNVs primarily but not exclusively
   }
   # REF
-  if(mut_type == "indel" & !is.character(vcf_gr$REF)) {
+  if(!is.character(vcf_gr$REF)) {
     vcf_gr$REF <- unlist(stringr::str_split(string = Biostrings::toString(vcf_va@fixed$REF), pattern = ", "))  # Needed for InDels
   }
 
   # Add tumor and normal specific DP field
-  vcf_gr$DP_TUMOR <- vcf_va@assays@data@listData$DP[,vcf_tumor_sample_index]
-  vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]
+  if(caller %in% c("mutect", "varscan", "strelka", "caveman")) {
+    vcf_gr$DP_TUMOR <- vcf_va@assays@data@listData$DP[,vcf_tumor_sample_index]
+    vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]
+
+  } else if(caller == "deepvariant") {
+    vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]
+  }
 
   if(caller == "mutect") {
     # FORMAT fields are stored in list of lists, need to properly extract tumor AD, AF and normal AD
@@ -914,6 +944,16 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
     vcf_gr$RTZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RTZ)[,vcf_normal_sample_index]
     vcf_gr$PM_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$PM)[,vcf_normal_sample_index]
     vcf_gr$GT_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_normal_sample_index]
+
+  } else if(caller == "deepvariant") {
+
+    vcf_gr$REF_AD_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$AD[,])[1,]))
+    vcf_gr$ALT_AD_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$AD[,])[2,]))
+    vcf_gr$VAF_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$VAF[,])[1,]))
+    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,]
+
+    # Remove some populated columns
+    GenomicRanges::mcols(vcf_gr) <- GenomicRanges::mcols(vcf_gr)[,-c(8:12)]
   }
 
   # Sort out seqinfo/levels/lengths mess

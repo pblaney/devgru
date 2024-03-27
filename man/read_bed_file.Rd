@@ -6,6 +6,7 @@
 \usage{
 read_bed_file(
   bed_file_path,
+  has_header = FALSE,
   additional_col_names = NULL,
   cpus = 1,
   seq_lengths = gUtils::hg_seqlengths()
@@ -13,6 +14,8 @@ read_bed_file(
 }
 \arguments{
 \item{bed_file_path}{Path to BED file}
+
+\item{has_header}{Does BED file have header line}
 
 \item{additional_col_names}{Names for additional columns in BED file, beyond first three}
 

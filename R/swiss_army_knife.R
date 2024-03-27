@@ -499,7 +499,7 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
                                               between(x = corrected_minor_allele[i], left = 5.2, right = 5.8) ~ corrected_minor_allele[i],
                                               between(x = corrected_minor_allele[i], left = 5.8, right = 6.2) ~ 6,
                                               between(x = corrected_minor_allele[i], left = 6.2, right = 6.8) ~ corrected_minor_allele[i],
-                                              corrected_minor_allele[i] > 7 ~ round(x = corrected_minor_allele[i], digits = 0))
+                                              corrected_minor_allele[i] >= 7 ~ round(x = corrected_minor_allele[i], digits = 0))
     }
 
     # Get the correct value of the minor allele, is occasionally negative
@@ -526,7 +526,7 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
                                                  between(x = corrected_total_cn[i], left = 5.2, right = 5.8) ~ corrected_total_cn[i],
                                                  between(x = corrected_total_cn[i], left = 5.8, right = 6.2) ~ 6,
                                                  between(x = corrected_total_cn[i], left = 6.2, right = 6.8) ~ corrected_total_cn[i],
-                                                 corrected_total_cn[i] > 7 ~ round(x = corrected_total_cn[i], digits = 0))
+                                                 corrected_total_cn[i] >= 7 ~ round(x = corrected_total_cn[i], digits = 0))
     }
 
     corrected_profile <- data.table::data.table("sample" = rep(sample_string, nrow(cnv_dt)),

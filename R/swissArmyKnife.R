@@ -432,11 +432,16 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 
   # Text table of summary metrics
   # TODO: add outlier sample flagging
-  outtable <- data.table(seq_protocol = "mean(range)",
-                         "Coverage" = stringr::str_c(round(mean(alfred_metrics$MedianCoverage), digits = 1), " (", range(alfred_metrics$MedianCoverage)[1], "-", range(alfred_metrics$MedianCoverage)[2], ")"),
-                         "Read Length" = stringr::str_split(string = unique(alfred_metrics$MedianReadLength), pattern = ":",simplify = T)[,1],
-                         "Insert Size" = stringr::str_c(round(mean(alfred_metrics$MedianInsertSize), digits = 1), " (", range(alfred_metrics$MedianInsertSize)[1], "-", range(alfred_metrics$MedianInsertSize)[2], ")"))
-  colnames(outtable)[1] <- seq_protocol
+  tumor_table_metrics <- alfred_metrics %>% dplyr::filter(tumor_normal == "Tumor")
+  normal_table_metrics <- alfred_metrics %>% dplyr::filter(tumor_normal == "Normal")
+  outtable <- data.table(placeholder = c("Tumor", "Normal"),
+                         "Coverage" = c(stringr::str_c(round(mean(tumor_table_metrics$MedianCoverage), digits = 1), " (", range(tumor_table_metrics$MedianCoverage)[1], "-", range(tumor_table_metrics$MedianCoverage)[2], ")"),
+                                        stringr::str_c(round(mean(normal_table_metrics$MedianCoverage), digits = 1), " (", range(normal_table_metrics$MedianCoverage)[1], "-", range(normal_table_metrics$MedianCoverage)[2], ")")),
+                         "Insert Size" = c(stringr::str_c(round(mean(tumor_table_metrics$MedianInsertSize), digits = 1), " (", range(tumor_table_metrics$MedianInsertSize)[1], "-", range(tumor_table_metrics$MedianInsertSize)[2], ")"),
+                                           stringr::str_c(round(mean(normal_table_metrics$MedianInsertSize), digits = 1), " (", range(normal_table_metrics$MedianInsertSize)[1], "-", range(normal_table_metrics$MedianInsertSize)[2], ")")),
+                         "Read Length" = c(stringr::str_split(string = unique(tumor_table_metrics$MedianReadLength), pattern = ":",simplify = T)[,1],
+                                           stringr::str_split(string = unique(normal_table_metrics$MedianReadLength), pattern = ":",simplify = T)[,1]))
+  colnames(outtable)[1] <- paste0(seq_protocol, " mean(range)")
   metrics_summary_table <- ggpubr::ggtexttable(t(outtable), theme = ggpubr::ttheme("light"))
 
   # Histograms of target bed mapped fraction, insertion and deletion detection rate
@@ -479,12 +484,6 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
   return(read_combo_plt)
 }
 
-
-
-
-
-
-# functionalize reading in union-consensus SNV/InDels, quick QC check
 
 #' @name get_qc_diagnostics_snvindel
 #' @title Generate diagnostic plots for SNV & InDel variant calling QC checks
@@ -662,7 +661,6 @@ get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_di
 
   # Final combo QC diagnostic plot
   snvindel_qc_diagnostic_plot <- (snvs_per_sample_by_caller / caller_by_snvs) | (indels_per_sample_by_caller / caller_by_indels)
-
   return(snvindel_qc_diagnostic_plot)
 }
 

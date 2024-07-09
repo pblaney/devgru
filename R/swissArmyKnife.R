@@ -75,13 +75,16 @@
 #' @importFrom reshape2 melt
 #' @importFrom purrr as_vector
 #' @importFrom ggridges stat_density_ridges
+#' @importFrom ggfittext geom_bar_text
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
-# Split these into 10 vars per rows just for better aesthetics as there are many
-DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=MappedProperFraction=MappedReverseFraction=MedianCoverage=MedianInsertSize=Sample=NULL
-alignment_group=fraction=med_reads=median_count=tumor_normal=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=NULL
-AF_TUMOR=DP_TUMOR=FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
+# Split these into multiple rows just for better aesthetics as there are many
+DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=MappedProperFraction=NULL
+MappedReverseFraction=MedianCoverage=MedianInsertSize=Sample=alignment_group=fraction=med_reads=NULL
+alignment_group=fraction=med_reads=median_count=tumor_normal=ALT=CALLER=REF=SAMPLE=total_indels=NULL
+total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=NULL
+FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -220,7 +223,6 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 
 
 
-# Given an alfred base directory with tumor/normal subdirs with summary.txt files inside
 
 #' @name get_qc_diagnostics_alignment
 #' @title Generate diagnostic plots for alignment QC checks using Alfred summary files
@@ -237,6 +239,17 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #' @return Patchwork 'quilt'-like plot of ggplots
 #' @export
 get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL, seq_protocol = "WGS") {
+
+  # Set figure base theme
+  ggplot2::theme_set(
+    ggplot2::theme_gray() +
+      ggplot2::theme(axis.line = ggplot2::element_line(linewidth = 0.5,  color = "black"),
+                     panel.background = ggplot2::element_rect(fill = NA, linewidth = rel(14)),
+                     panel.grid.minor = ggplot2::element_line(color = NA),
+                     axis.text = ggplot2::element_text(size = 12,  color = "black"),
+                     axis.title = ggplot2::element_text(size = 14),
+                     axis.ticks = ggplot2::element_line(linewidth = 0.75),
+                     title = ggplot2::element_text(size = 16)))
 
   # User provides paths to directory with T/N Alfred alignment QC summary files
   if(!is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
@@ -423,6 +436,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
                          "Coverage" = stringr::str_c(round(mean(alfred_metrics$MedianCoverage), digits = 1), " (", range(alfred_metrics$MedianCoverage)[1], "-", range(alfred_metrics$MedianCoverage)[2], ")"),
                          "Read Length" = stringr::str_split(string = unique(alfred_metrics$MedianReadLength), pattern = ":",simplify = T)[,1],
                          "Insert Size" = stringr::str_c(round(mean(alfred_metrics$MedianInsertSize), digits = 1), " (", range(alfred_metrics$MedianInsertSize)[1], "-", range(alfred_metrics$MedianInsertSize)[2], ")"))
+  colnames(outtable)[1] <- seq_protocol
   metrics_summary_table <- ggpubr::ggtexttable(t(outtable), theme = ggpubr::ttheme("light"))
 
   # Histograms of target bed mapped fraction, insertion and deletion detection rate
@@ -467,6 +481,190 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 
 
 
+
+
+
+# functionalize reading in union-consensus SNV/InDels, quick QC check
+
+#' @name get_qc_diagnostics_snvindel
+#' @title Generate diagnostic plots for SNV & InDel variant calling QC checks
+#'
+#' @description
+#' Single command to generate a comprehensive set of diagnostic plots that assist in
+#' performing QC checks of SNVs & InDels called from MGP1000 using union consensus.
+#' Can be used as both a first pass of unfiltered variants to see consensus skew as
+#' well as used after filtering to show changes in calling metrics.
+#'
+#' @param path_to_snv_dir Path to directory of MGP1000 union consensus SNVs
+#' @param path_to_indel_dir Path to directory of MGP1000 union consensus InDels
+#' @param snv_indel_obj Data.table object with merged SNVs & InDels, used in place of paths to directories
+#' @param plot_sample_names Output plots to include sample names on y-axis, default: TRUE
+#' @param include_caveman Add caveman to consensus list if used in SNV variant calling, default: FALSE
+#'
+#' @return Patchwork 'quilt'-like plot of ggplots
+#' @export
+get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_dir = NULL, snv_indel_obj = NULL, plot_sample_names = T, include_caveman = F) {
+
+  # Set figure base theme
+  ggplot2::theme_set(
+    ggplot2::theme_gray() +
+      ggplot2::theme(axis.line = ggplot2::element_line(linewidth = 0.5,  color = "black"),
+                     panel.background = ggplot2::element_rect(fill = NA, linewidth = rel(14)),
+                     panel.grid.minor = ggplot2::element_line(color = NA),
+                     axis.text = ggplot2::element_text(size = 12,  color = "black"),
+                     axis.title = ggplot2::element_text(size = 14),
+                     axis.ticks = ggplot2::element_line(linewidth = 0.75),
+                     title = ggplot2::element_text(size = 16)))
+
+  # User provides either paths to directory with SNVs and InDel or a single DT obj with both SNV+InDels
+  if(!is.null(path_to_snv_dir) & !is.null(path_to_indel_dir) & is.null(snv_indel_obj)) {
+    # Aggregate all SNV and InDel union-consensus files
+    message("Aggregate input mutations ...")
+    snvs <- aggregate_these(path_to_files = path_to_snv_dir,
+                            pattern_to_grab = "*.hq.union.consensus.somatic.snv.txt.gz",
+                            delim = "\t",
+                            has_header = T,
+                            cpus = 1,
+                            add_uniq_id = F)
+
+    indels <- aggregate_these(path_to_files = path_to_indel_dir,
+                              pattern_to_grab = "*.hq.union.consensus.somatic.indel.txt.gz",
+                              delim = "\t",
+                              has_header = T,
+                              cpus = 1,
+                              add_uniq_id = F)
+
+    # If user already aggregated, split DT obj into SNVs and InDels
+  } else if(is.null(path_to_snv_dir) & is.null(path_to_indel_dir) & !is.null(snv_indel_obj)) {
+    # Aggregate all SNV and InDel union-consensus files
+    message("Read in aggregated mutations ...")
+    snvs <- snv_indel_obj %>% dplyr::filter(stringr::str_length(REF) == 1 & stringr::str_length(ALT) == 1)
+    indels <- dplyr::setdiff(x = snv_indel_obj, y = snvs)
+
+  } else {
+    stop(message = "Must provide either path to directories of SNVs and InDels or SNV+InDel aggregated data.table ...")
+  }
+
+  # Get count of all SNVs and InDels per sample by caller
+  message("Counting mutations per sample by caller ...")
+  snvs_by_caller <- snvs %>%
+    dplyr::group_by(SAMPLE) %>%
+    dplyr::count(CALLER) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(total_snvs = sum(n)) %>%
+    dplyr::arrange(dplyr::desc(total_snvs))
+
+  indels_by_caller <- indels %>%
+    dplyr::group_by(SAMPLE) %>%
+    dplyr::count(CALLER) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(total_indels = sum(n)) %>%
+    dplyr::arrange(dplyr::desc(total_indels))
+
+  # Factor the caller list for consistent plotting
+  if(include_caveman) {
+    snv_caller_levels <- c("caveman","mutect","strelka","varscan",
+                           "caveman,mutect","caveman,strelka","caveman,varscan",
+                           "mutect,strelka","mutect,varscan","strelka,varscan",
+                           "caveman,mutect,strelka","caveman,mutect,varscan",
+                           "caveman,strelka,varscan","mutect,strelka,varscan",
+                           "caveman,mutect,strelka,varscan")
+  } else if(!include_caveman) {
+    snv_caller_levels <- c("mutect","strelka","varscan",
+                           "mutect,strelka", "mutect,varscan","strelka,varscan",
+                           "mutect,strelka,varscan")
+  }
+
+  snvs_by_caller$CALLER <- factor(snvs_by_caller$CALLER,
+                                  levels = snv_caller_levels)
+
+  indels_by_caller$CALLER <- factor(indels_by_caller$CALLER,
+                                    levels = c("mutect","strelka","svaba","varscan",
+                                               "mutect,strelka","mutect,svaba","mutect,varscan",
+                                               "strelka,svaba","strelka,varscan","svaba,varscan",
+                                               "mutect,strelka,svaba","mutect,strelka,varscan","mutect,svaba,varscan",
+                                               "strelka,svaba,varscan","mutect,strelka,svaba,varscan"))
+
+  # Build SNVs per sample by caller plot
+  message("Generating diagnostic plots ...")
+  snvs_per_sample_by_caller <- ggplot2::ggplot(snvs_by_caller) +
+    ggplot2::geom_col(ggplot2::aes(x = SAMPLE, y = n, fill = CALLER), position = "stack") +
+    ggplot2::scale_fill_manual(name = "Callers", values = paletteer::paletteer_d("ggsci::default_jama")) +
+    ggplot2::scale_y_reverse(expand = c(0.01,0.01), labels = scales::label_comma()) +
+    ggplot2::scale_x_discrete(position = "top") +
+    ggplot2::coord_flip() +
+    ggplot2::labs(title = "SNVs",
+         x = NULL,
+         y = "Count") +
+    ggplot2::theme(legend.position = "left",
+                    plot.title = ggplot2::element_text(hjust = 0.5),
+                    panel.border = ggplot2::element_rect(fill = NA),
+                    legend.key.size = ggplot2::unit("1.5", "mm"),
+                    legend.title = ggplot2::element_text(size = 11))
+  # Sample names or not on Y axis
+  if(plot_sample_names) {
+    snvs_per_sample_by_caller <- snvs_per_sample_by_caller + ggplot2::theme(axis.text.y = element_text(size = 8))
+
+  } else if(!plot_sample_names) {
+    snvs_per_sample_by_caller <- snvs_per_sample_by_caller + ggplot2::theme(axis.text.y = element_blank())
+  }
+
+  # Build counts of total by caller
+  caller_by_snvs <- ggplot2::ggplot(data = snvs_by_caller %>%
+                                             dplyr::group_by(CALLER) %>%
+                                             dplyr::summarise(total_per_caller = round((sum(n) / sum(snvs_by_caller$n)) * 100, digits = 1)),
+                                    ggplot2::aes(x = CALLER, y = total_per_caller, fill = CALLER, label = total_per_caller)) +
+                    ggplot2::geom_col() +
+                    ggfittext::geom_bar_text(min.size = 1) +
+                    ggplot2::scale_fill_manual(name = "Callers", values = paletteer::paletteer_d("ggsci::default_jama")) +
+                    ggplot2::scale_y_reverse(expand = c(0.02,0.02), labels = scales::label_percent(scale = 1), position = "right") +
+                    ggplot2::scale_x_discrete(position = "top") +
+                    ggplot2::labs(x = "Percentage of\ncalled mutations",
+                                  y = NULL) +
+                    ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                                    axis.ticks.x.top = ggplot2::element_blank(),
+                                    legend.position = "none",
+                                    panel.border = ggplot2::element_rect(fill = NA))
+
+  # Build InDels per sample by caller plot
+  indels_per_sample_by_caller <- ggplot2::ggplot(indels_by_caller) +
+    ggplot2::geom_col(ggplot2::aes(x = SAMPLE, y = n, fill = CALLER), position = "stack") +
+    ggplot2::scale_fill_manual(name = "Callers", values = paletteer_d("colorBlindness::paletteMartin")) +
+    ggplot2::scale_y_continuous(expand = c(0.01,0.01), labels = scales::label_comma(), position = "left") +
+    ggplot2::scale_x_discrete(position = "bottom") +
+    ggplot2::coord_flip() +
+    ggplot2::labs(title = "InDels",
+                   x = NULL,
+                   y = "Count") +
+    ggplot2::theme(legend.position = "right",
+                    plot.title = ggplot2::element_text(hjust = 0.5),
+                    axis.text.y = ggplot2::element_blank(),
+                    panel.border = ggplot2::element_rect(fill = NA),
+                    legend.key.size = ggplot2::unit("1.5", "mm"),
+                    legend.title = ggplot2::element_text(size = 11))
+
+  # Build counts of total by caller
+  caller_by_indels <- ggplot2::ggplot(data = indels_by_caller %>%
+                                               dplyr::group_by(CALLER) %>%
+                                               dplyr::summarise(total_per_caller = round((sum(n) / sum(indels_by_caller$n)) * 100, digits = 1)),
+                                      ggplot2::aes(x = CALLER, y = total_per_caller, fill = CALLER, label = total_per_caller)) +
+                        ggplot2::geom_col() +
+                        ggfittext::geom_bar_text(min.size = 1) +
+                        ggplot2::scale_fill_manual(name = "Callers", values = paletteer::paletteer_d("colorBlindness::paletteMartin")) +
+                        ggplot2::scale_y_reverse(expand = c(0.02,0.02), labels = scales::label_percent(scale = 1), position = "left") +
+                        ggplot2::scale_x_discrete(position = "top") +
+                        ggplot2::labs(x = "Percentage of\ncalled mutations",
+                                      y = NULL) +
+                        ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                                        axis.ticks.x.top = ggplot2::element_blank(),
+                                        legend.position = "none",
+                                        panel.border = ggplot2::element_rect(fill = NA))
+
+  # Final combo QC diagnostic plot
+  snvindel_qc_diagnostic_plot <- (snvs_per_sample_by_caller / caller_by_snvs) | (indels_per_sample_by_caller / caller_by_indels)
+
+  return(snvindel_qc_diagnostic_plot)
+}
 
 
 

@@ -39,7 +39,8 @@ Imports:
     reshape2,
     purrr,
     ggridges,
-    stats
+    stats,
+    ggfittext
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

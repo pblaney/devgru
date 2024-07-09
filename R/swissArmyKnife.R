@@ -381,7 +381,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 
   # Coverage
   coverage_dist_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggridges::stat_density_ridges(ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(stats::ecdf))),
+    ggridges::stat_density_ridges(ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf))),
                                   alpha = 0.5,
                                   calc_ecdf = TRUE,
                                   bandwidth = 3,
@@ -398,7 +398,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 
   # Insert size distribution
   insert_dist_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggridges::stat_density_ridges(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(stats::ecdf))),
+    ggridges::stat_density_ridges(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf))),
                                   alpha = 0.5,
                                   calc_ecdf = TRUE,
                                   bandwidth = 10,

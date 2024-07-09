@@ -4,6 +4,7 @@
 # }}}}------->>>           + | |-+-  |  +   | +-  |-+-  |   |         <<<-------{{{{ #
 #                          | | |     | /    |   | |  \  |   |                        #
 #                         ---   ---   /      ---      \  ---                         #
+######################################################################################
 # ▒▓▓▒▒▒▒▒▒▒▒▓▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▒▒▒▒▒▒▒▒▒▒▒▒
 # ▒▒▒▒▒░▒▒▒▒▓▓▒▒▒▒░░░░░░░░░░░░░░░░░░▒▒░░░░░░░░▒░░░░░░░▒░░░░░░░░░░░░░░░░░░▒▒▒▓▓▓▒▒▒▒▒▒▒
 # ▒▒▒▒▒░░░░▒▒▒▒▒░░░░░░░░░░░░░░░░░░░░░▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░▒▒▒▒▒░░░░░░░░▒▒▒▓▓▒▒▒▒▒▒
@@ -53,6 +54,13 @@
 #' @import VariantAnnotation
 #' @import stringr
 #' @import dplyr
+#' @import ggplot2
+#' @import scales
+#' @import paletteer
+#' @import patchwork
+#' @import ggpubr
+#' @import ggside
+#' @import stats
 
 #' @importFrom librarian shelf
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
@@ -63,10 +71,17 @@
 #' @importFrom doParallel registerDoParallel
 #' @importFrom foreach foreach
 #' @importFrom foreach `%dopar%`
+#' @importFrom paint paint
+#' @importFrom reshape2 melt
+#' @importFrom purrr as_vector
+#' @importFrom ggridges stat_density_ridges
 
 
-## appease R CMD CHECK misunderstanding of data.table syntax by declaring these global variables
-gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
+# Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
+# Split these into 10 vars per rows just for better aesthetics as there are many
+DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=MappedProperFraction=MappedReverseFraction=MedianCoverage=MedianInsertSize=Sample=NULL
+alignment_group=fraction=med_reads=median_count=tumor_normal=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=NULL
+AF_TUMOR=DP_TUMOR=FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -197,6 +212,264 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   gr <- GenomicRanges::sort.GenomicRanges(gr, ignore.strand = TRUE)
   return(gr)
 }
+
+
+
+
+
+
+
+
+# Given an alfred base directory with tumor/normal subdirs with summary.txt files inside
+
+#' @name get_qc_diagnostics_alignment
+#' @title Generate diagnostic plots for alignment QC checks using Alfred summary files
+#'
+#' @description
+#' Single command to generate a comprehensive set of diagnostic plots that assist in
+#' performing QC checks of tumor/normal read alignment of various sequencing protocol flavors
+#' using Alfred summary files.
+#'
+#' @param path_to_tumor_dir Path to directory of tumor sample Alfred summary files
+#' @param path_to_normal_dir Path to directory of normal sample Alfred summary files
+#' @param seq_protocol Type of sequencing protocol for display purposes, default: WGS
+#'
+#' @return Patchwork 'quilt'-like plot of ggplots
+#' @export
+get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL, seq_protocol = "WGS") {
+
+  # User provides paths to directory with T/N Alfred alignment QC summary files
+  if(!is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
+    # Read in and aggregate the tumor/normal alfred QC summary files
+    message("Aggregate input QC summary metrics ...")
+    tumor_alfreds <- aggregate_these(path_to_files = path_to_tumor_dir,
+                                     pattern_to_grab = "*.alfred.qc.summary.txt",
+                                     delim = "\t",
+                                     has_header = T,
+                                     add_uniq_id = F)
+    tumor_alfreds$tumor_normal <- "Tumor"
+    message(paste0("Found ", dplyr::n_distinct(tumor_alfreds$Sample), " tumor samples ..."))
+
+    normal_alfreds <- aggregate_these(path_to_files = path_to_normal_dir,
+                                      pattern_to_grab = "*.alfred.qc.summary.txt",
+                                      delim = "\t",
+                                      has_header = T,
+                                      add_uniq_id = F)
+    normal_alfreds$tumor_normal <- "Normal"
+    message(paste0("Found ", dplyr::n_distinct(normal_alfreds$Sample), " normal samples ..."))
+
+  } else if(is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
+    stop(message = "Must provide path to directories of tumor and normal Alfred QC summary files ...")
+
+  } else if(!is.null(path_to_tumor_dir) & is.null(path_to_normal_dir)) {
+    stop(message = "Must provide path to directories of tumor and normal Alfred QC summary files ...")
+  }
+
+  # Sanity check if there is no match between normal/tumor samples
+  message("Quick view of samples for sanity cross-check ...")
+  paint::paint(df = data.frame("Tumor" = tumor_alfreds$Sample))
+  paint::paint(df = data.frame("Normal" = normal_alfreds$Sample))
+
+  # Combine the SNV+InDel QC metrics
+  message("Merging tumor and normal alignment metrics ...")
+  alfred_metrics <- gUtils::rrbind(tumor_alfreds, normal_alfreds)
+
+  # boxplot of total mapped reads
+  message("Generating diagnostic plots ...")
+  fraction_fwd_rev_melt <- alfred_metrics %>%
+                            dplyr::select(Sample, MappedForwardFraction, MappedReverseFraction, tumor_normal) %>%
+                            reshape2::melt(id.vars = c("Sample", "tumor_normal"),
+                                           value.name = "fraction",
+                                           variable.name = "alignment_group")
+
+  mapped_reads_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggplot2::geom_boxplot(ggplot2::aes(x = tumor_normal, y = Mapped, fill = tumor_normal), alpha = 0.6, width = 0.3) +
+    ggplot2::scale_fill_manual(name = "Sample\nType", values = c("skyblue", "darkred")) +
+    ggplot2::geom_jitter(ggplot2::aes(x = tumor_normal, y = Mapped, color = round(MappedProperFraction * 100, digits = 1)), alpha = 0.5, size = 3, width = 0.2) +
+    ggplot2::scale_color_gradientn(name = "Percent\nMapped", colors = paletteer::paletteer_c("grDevices::Inferno", 10)) +
+    ggplot2::scale_y_continuous(labels = scales::label_comma(scale = 1e-6),
+                       limits = c(min(alfred_metrics$Mapped) - min(alfred_metrics$Mapped) * 0.10,
+                                  max(alfred_metrics$Mapped) + max(alfred_metrics$Mapped) * 0.10),
+                       expand = c(0.02,0.02)) +
+    ggside::geom_xsidecol(data = fraction_fwd_rev_melt,
+                          ggplot2::aes(x = tumor_normal, y = fraction, group = alignment_group),
+                          position = "dodge", width = 0.5, just = 0.3,
+                          fill = dplyr::case_when(fraction_fwd_rev_melt$alignment_group == "MappedForwardFraction" ~ "#009292",
+                                           fraction_fwd_rev_melt$alignment_group == "MappedReverseFraction" ~ "#490092"), color = "black") +
+    ggside::geom_xsidehline(yintercept = 0.45, color = "cyan") +
+    ggside::scale_xsidey_continuous(labels = scales::label_percent()) +
+    ggplot2::labs(x = NULL,
+                  y = "Reads (millions)") +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, vjust = 0.95, hjust = 0.5),
+                   panel.border = ggplot2::element_rect(fill = NA),
+                   ggside.panel.scale = .25) +
+    ggplot2::annotate(geom = "text",
+                      x = c(0.85, 1.15, 1.85, 2.15),
+                      y = max(alfred_metrics$Mapped) + max(alfred_metrics$Mapped) * 0.10,
+                      label = c("Fwd", "Rev", "Fwd", "Rev"),
+                      color = c("#009292", "#490092","#009292", "#490092")) +
+    ggplot2::annotate(geom = "text",
+                      x = c(0.60, 2.40),
+                      y = alfred_metrics %>%
+                             dplyr::group_by(tumor_normal) %>%
+                             dplyr::reframe(med_reads = stats::median(Mapped)) %>%
+                             dplyr::select(med_reads) %>%
+                             purrr::as_vector(),
+                      label = round(alfred_metrics %>%
+                                       dplyr::group_by(tumor_normal) %>%
+                                       dplyr::reframe(med_reads = stats::median(Mapped)) %>%
+                                       dplyr::select(med_reads) %>%
+                                       purrr::as_vector() %>%
+                                       as.numeric(),
+                                    digits = -6) / 1e6)
+
+  # boxplots of read fractions
+  all_fractions <- data.table("group" = c("DuplicateFraction", "SecondaryAlignmentFraction", "SupplementaryAlignmentFraction", "UnmappedFraction"),
+                              "Duplicate" = as.numeric(alfred_metrics$DuplicateFraction),
+                              "Secondary" = as.numeric(alfred_metrics$SecondaryAlignmentFraction),
+                              "Supplementary" = as.numeric(alfred_metrics$SupplementaryAlignmentFraction),
+                              "Unmapped" = as.numeric(alfred_metrics$UnmappedFraction)) %>%
+    reshape2::melt(id.vars = "group",
+                   value.name = "fraction",
+                   variable.name = "alignment_group")
+
+  median_fractions_by_group <- all_fractions %>%
+                                dplyr::group_by(alignment_group) %>%
+                                dplyr::summarise(median_frac = stats::median(fraction))
+
+  read_fracs_plt <- ggplot2::ggplot(data = all_fractions) +
+    ggplot2::geom_boxplot(ggplot2::aes(x = alignment_group, y = fraction * 100, fill = alignment_group), alpha = 0.6, width = 0.4, outliers = F) +
+    ggplot2::scale_fill_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
+    ggplot2::geom_jitter(ggplot2::aes(x = alignment_group, y = fraction * 100, color = alignment_group), alpha = 0.4, size = 2.5, width = 0.3) +
+    ggplot2::scale_color_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
+    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
+    ggplot2::labs(x = NULL,
+                  y = "Reads (%)") +
+    ggplot2::theme(axis.text.x =  ggplot2::element_text(angle = 33, vjust = 0.60, hjust = 0.5, size = 9),
+                    legend.position = "right",
+                    panel.border =  ggplot2::element_rect(fill = NA))
+
+  all_reads <- data.table("group" = c("DuplicateMarked", "SecondaryAlignments", "SupplementaryAlignments", "Unmapped"),
+                          "Duplicate" = as.numeric(alfred_metrics$DuplicateMarked),
+                          "Secondary" = as.numeric(alfred_metrics$SecondaryAlignments),
+                          "Supplementary" = as.numeric(alfred_metrics$SupplementaryAlignments),
+                          "Unmapped" = as.numeric(alfred_metrics$Unmapped)) %>%
+    reshape2::melt(id.vars = "group",
+                   value.name = "count",
+                   variable.name = "alignment_group")
+
+  median_fractions_by_group <- all_reads %>%
+                                dplyr::group_by(alignment_group) %>%
+                                dplyr::summarise(median_count = stats::median(as.numeric(count)))
+
+  read_counts_plt <- ggplot2::ggplot(data = all_reads) +
+    ggplot2::geom_col(data = median_fractions_by_group,
+             ggplot2::aes(x = alignment_group, y = median_count, fill = alignment_group), alpha = 0.3, width = 0.4, color = "black") +
+    ggplot2::scale_fill_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
+    ggplot2::geom_jitter(ggplot2::aes(x = alignment_group, y = count, color = alignment_group), alpha = 0.4, size = 2.5, width = 0.3) +
+    ggplot2::scale_color_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
+    ggplot2::scale_y_reverse(labels = scales::label_comma(scale = 1e-6),expand = c(0.02,0.02)) +
+    ggplot2::scale_x_discrete(position = "top") +
+    ggplot2::labs(x = NULL,
+                  y = "Reads (millions)") +
+    ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                   legend.position = "none",
+                   panel.border = ggplot2::element_rect(fill = NA))
+
+  # First combo plot of read metrics
+  read_mets_plt <- patchwork::wrap_plots(list(read_fracs_plt, read_counts_plt), ncol = 1, guides = "collect")
+
+  # Coverage
+  coverage_dist_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggridges::stat_density_ridges(ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(stats::ecdf))),
+                                  alpha = 0.5,
+                                  calc_ecdf = TRUE,
+                                  bandwidth = 3,
+                                  geom = "density_ridges_gradient",
+                                  scale = 2) +
+    ggplot2::scale_fill_gradientn(name = "Tail prob.\nCoverage", colors = paletteer::paletteer_c("grDevices::Turku", n = 10)) +
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03), limits = c(min(alfred_metrics$MedianCoverage),max(alfred_metrics$MedianCoverage) + 5)) +
+    ggside::geom_xsidepoint(ggplot2::aes(x = MedianCoverage, y = tumor_normal, color = tumor_normal),
+                            position = "jitter", alpha = 0.5, show.legend = F, na.rm = T) +
+    ggplot2::scale_color_manual(values = c("skyblue", "darkred")) +
+    ggplot2::labs(x = "Coverage",
+                  y = NULL) +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA))
+
+  # Insert size distribution
+  insert_dist_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggridges::stat_density_ridges(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(stats::ecdf))),
+                                  alpha = 0.5,
+                                  calc_ecdf = TRUE,
+                                  bandwidth = 10,
+                                  geom = "density_ridges_gradient",
+                                  scale = 2) +
+    ggplot2::scale_fill_gradientn(name = "Insert\nSize", colors = paletteer::paletteer_c("grDevices::Lajolla", n = 10)) +
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03), limits = c(min(alfred_metrics$MedianInsertSize),max(alfred_metrics$MedianInsertSize) + 5)) +
+    ggside::geom_xsidepoint(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, color = tumor_normal),
+                            position = "jitter", alpha = 0.5, show.legend = F, na.rm = T) +
+    ggplot2::scale_color_manual(values = c("skyblue", "darkred")) +
+    ggplot2::labs(x = "Insert Size (bp)",
+                  y = NULL) +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
+                    axis.text.y = ggplot2::element_blank())
+
+  # Second combo plot of coverage and insert size distribution
+  cov_insrt_plt <- patchwork::wrap_plots(list(coverage_dist_plt, insert_dist_plt), ncol = 2, nrow = 1, guides = "collect")
+
+  # Text table of summary metrics
+  # TODO: add outlier sample flagging
+  outtable <- data.table(seq_protocol = "mean(range)",
+                         "Coverage" = stringr::str_c(round(mean(alfred_metrics$MedianCoverage), digits = 1), " (", range(alfred_metrics$MedianCoverage)[1], "-", range(alfred_metrics$MedianCoverage)[2], ")"),
+                         "Read Length" = stringr::str_split(string = unique(alfred_metrics$MedianReadLength), pattern = ":",simplify = T)[,1],
+                         "Insert Size" = stringr::str_c(round(mean(alfred_metrics$MedianInsertSize), digits = 1), " (", range(alfred_metrics$MedianInsertSize)[1], "-", range(alfred_metrics$MedianInsertSize)[2], ")"))
+  metrics_summary_table <- ggpubr::ggtexttable(t(outtable), theme = ggpubr::ttheme("light"))
+
+  # Histograms of target bed mapped fraction, insertion and deletion detection rate
+  target_frac_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggplot2::geom_histogram(ggplot2::aes(x = FractionCovered, group = tumor_normal, fill = tumor_normal),
+                            position = "dodge", binwidth = 0.05,  color = "black", alpha = 0.6) +
+    ggplot2::scale_x_continuous(limits = c(0,1), expand = c(0.02,0.02), breaks = scales::breaks_width(width = 0.1)) +
+    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
+    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
+    ggplot2::labs(x = "Fraction of target covered",
+                  y = "Count of samples per bin") +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
+                   legend.position = "none")
+
+  ins_rate_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggplot2::geom_histogram(ggplot2::aes(x = InsertionRate, group = tumor_normal, fill = tumor_normal),
+                   position = "stack", binwidth = 0.000005, color = "black", alpha = 0.6) +
+    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
+    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
+    ggplot2::labs(x = "Insertion rate",
+                  y = "Count of samples per bin") +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
+                   legend.position = "none")
+
+  del_rate_plt <- ggplot2::ggplot(alfred_metrics) +
+    ggplot2::geom_histogram(ggplot2::aes(x = DeletionRate, group = tumor_normal, fill = tumor_normal),
+                            position = "stack", binwidth = 0.000005, color = "black", alpha = 0.6) +
+    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
+    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
+    ggplot2::labs(x = "Deletion rate",
+                  y = "Count of samples per bin") +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
+                   legend.position = "none")
+
+  # Third combo plot of histograms
+  hist_combo_plot <- target_frac_plt / ins_rate_plt / del_rate_plt + patchwork::plot_layout(axes = "collect_y")
+
+  # Final quilt plot of all QC plots
+  read_combo_plt <- (patchwork::plot_spacer() + metrics_summary_table + patchwork::plot_spacer()) / (mapped_reads_plt + hist_combo_plot + read_mets_plt) / cov_insrt_plt + patchwork::plot_layout(ncol = 1, nrow = 3, heights = c(0.66, 1, 1))
+  return(read_combo_plt)
+}
+
+
+
+
+
+
 
 
 

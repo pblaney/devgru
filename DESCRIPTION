@@ -8,7 +8,7 @@ Description: A packaged-up environment in R specifically for various utilities t
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
 Depends: 
     R (>= 4.1.0)
 Imports: 
@@ -28,7 +28,18 @@ Imports:
     librarian,
     doParallel,
     foreach,
-    R.utils
+    R.utils,
+    ggplot2,
+    scales,
+    paletteer,
+    patchwork,
+    ggpubr,
+    ggside,
+    paint,
+    reshape2,
+    purrr,
+    ggridges,
+    stats
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

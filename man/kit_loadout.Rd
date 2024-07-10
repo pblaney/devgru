@@ -4,7 +4,7 @@
 \alias{kit_loadout}
 \title{Build the devgru environment by installing/loading packages}
 \usage{
-kit_loadout(update_kit = T)
+kit_loadout(update_kit = F)
 }
 \arguments{
 \item{update_kit}{Update all packages even if already installed, default: TRUE}

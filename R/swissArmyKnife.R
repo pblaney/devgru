@@ -113,7 +113,7 @@ FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
 #' @param update_kit Update all packages even if already installed, default: TRUE
 #'
 #' @export
-kit_loadout <- function(update_kit = T) {
+kit_loadout <- function(update_kit = F) {
 
   logo_viz <- "
 #                   ___   ___        ____   ____                          #

@@ -808,12 +808,17 @@ get_vaf <- function(vcf_obj, caller, mut_type) {
 #' @param indel_consensus_filter Threshold consensus filter for InDels
 #' @param strict_samples Samples that will be filtered with `*_consensus_filter``+1`
 #' @param discovery_genes Gene set vector used for discovery with `*_consensus_filter``=0`
-#' @param return_type Output either the converted maf-lite format table or data.table of standard format mutation table, default: maflite
+#' @param return_type Output either the converted maf-lite format table or data.table of standard format mutation table, supported: maf.lite, data.table
 #'
 #' @return data.table like in either maf-lite or standard format
 #' @export
 get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filter = 2, indel_consensus_filter = 2,
-                         strict_samples = NULL, discovery_genes = NULL, return_type = "maflite") {
+                         strict_samples = NULL, discovery_genes = NULL, return_type = "maf.lite") {
+
+  # First, check if return type is properly set
+  if(!return_type %in% c("maf.lite", "data.table")) {
+    stop(message = "\nInvalid return type, please specify either 'maf.lite' or 'data.table'")
+  }
 
   # Aggregate all SNV and InDel union-consensus files
   # Perform sanity checks on patients and samples
@@ -947,14 +952,24 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
   # Calculate the read depth information for the MAF-like file
   message("Calculate VAF for normal samples ...")
 
+  # Edge Case: Strelka does not directly report AD so it will be determined for normal as [AU_TIER1, CU_TIER1, TU_TIER1, GU_TIER1]
+  strelka_normal_alt_depth <- rep(NA, nrow(hq_muts))
+  # To get the correct ALT depth, need to loop through the records to build
+  for(i in 1:nrow(hq_muts)) {
+    # Get the ALT depth
+    strelka_normal_alt_depth[i] <- as.data.frame(hq_muts[i,])[,colnames(hq_muts[i,]) == paste0(hq_muts$ALT[i], "U_TIER1_NORMAL")]
+  }
+  # Now add calculated Strelka normal ALT depth to mutation table
+  hq_muts$STRELKA_alt_depth_normal <- strelka_normal_alt_depth
+
   normal_read_colnames <- which(c("MUTECT_DP_NORMAL", "STRELKA_DP_NORMAL", "VARSCAN_DP_NORMAL", "SVABA_DP_NORMAL") %in% colnames(hq_muts))
   normal_read_metrics <- hq_muts %>%
     dplyr::select(c("MUTECT_DP_NORMAL", "STRELKA_DP_NORMAL", "VARSCAN_DP_NORMAL", "SVABA_DP_NORMAL")[normal_read_colnames])
   dp_mean <- round(rowMeans(x = normal_read_metrics, na.rm = T), digits = 0)
 
-  alt_read_colnames <- which(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL") %in% colnames(hq_muts))
+  alt_read_colnames <- which(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth_normal", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL") %in% colnames(hq_muts))
   alt_read_metrics <- hq_muts %>%
-    dplyr::select(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL")[alt_read_colnames])
+    dplyr::select(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth_normal", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL")[alt_read_colnames])
   alt_mean <- round(rowMeans(x = alt_read_metrics, na.rm = T), digits = 0)
 
   ref_mean <- dp_mean - alt_mean
@@ -978,7 +993,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
     paint::paint(hq_muts_maf_lite_dt)
     return(hq_muts_maf_lite_dt)
 
-    # return the non-transformed post-filtered mutation table for QC
+  # return the non-transformed post-filtered mutation table for QC
   } else if(return_type == "data.table") {
     message("Mutation table generated ...")
     paint::paint(hq_muts)

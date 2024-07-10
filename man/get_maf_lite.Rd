@@ -11,7 +11,7 @@ get_maf_lite(
   indel_consensus_filter = 2,
   strict_samples = NULL,
   discovery_genes = NULL,
-  return_type = "maflite"
+  return_type = "maf.lite"
 )
 }
 \arguments{
@@ -27,7 +27,7 @@ get_maf_lite(
 
 \item{discovery_genes}{Gene set vector used for discovery with \verb{*_consensus_filter``=0}}
 
-\item{return_type}{Output either the converted maf-lite format table or data.table of standard format mutation table, default: maflite}
+\item{return_type}{Output either the converted maf-lite format table or data.table of standard format mutation table, supported: maf.lite, data.table}
 }
 \value{
 data.table like in either maf-lite or standard format

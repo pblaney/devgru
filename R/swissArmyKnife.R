@@ -952,12 +952,17 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
   # Calculate the read depth information for the MAF-like file
   message("Calculate VAF for normal samples ...")
 
-  # Edge Case: Strelka does not directly report AD so it will be determined for normal as [AU_TIER1, CU_TIER1, TU_TIER1, GU_TIER1]
+  # Edge Case: Strelka does not directly report AD for SNVs so it will be determined for normal as [AU_TIER1, CU_TIER1, TU_TIER1, GU_TIER1]
+  # However, AD is output for InDels as TIR_TIER1_NORMAL
   strelka_normal_alt_depth <- rep(NA, nrow(hq_muts))
-  # To get the correct ALT depth, need to loop through the records to build
+  # To get the correct ALT depth, need to loop through the records and differentiate between SNVs and InDels
   for(i in 1:nrow(hq_muts)) {
-    # Get the ALT depth
-    strelka_normal_alt_depth[i] <- as.data.frame(hq_muts[i,])[,colnames(hq_muts[i,]) == paste0(hq_muts$ALT[i], "U_TIER1_NORMAL")]
+    # Check if SNV or InDel
+    if(stringr::str_length(hq_muts$ALT[i]) == 1 & stringr::str_length(hq_muts$REF[i]) == 1) {
+      strelka_normal_alt_depth[i] <- as.data.frame(hq_muts[i,])[,colnames(hq_muts[i,]) == paste0("STRELKA_", hq_muts$ALT[i], "U_TIER1_NORMAL")]
+    } else {
+      strelka_normal_alt_depth[i] <-  hq_muts$STRELKA_TIR_TIER1_NORMAL[i]
+    }
   }
   # Now add calculated Strelka normal ALT depth to mutation table
   hq_muts$STRELKA_alt_depth_normal <- strelka_normal_alt_depth

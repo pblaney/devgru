@@ -40,7 +40,8 @@ Imports:
     purrr,
     ggridges,
     stats,
-    ggfittext
+    ggfittext,
+    DNAcopy
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

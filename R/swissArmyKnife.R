@@ -61,6 +61,7 @@
 #' @import ggpubr
 #' @import ggside
 #' @import stats
+#' @import DNAcopy
 
 #' @importFrom librarian shelf
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
@@ -261,7 +262,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
                                      has_header = T,
                                      add_uniq_id = F)
     tumor_alfreds$tumor_normal <- "Tumor"
-    message(paste0("Found ", dplyr::n_distinct(tumor_alfreds$Sample), " tumor samples ..."))
+    message("Found ", dplyr::n_distinct(tumor_alfreds$Sample), " tumor samples ...")
 
     normal_alfreds <- aggregate_these(path_to_files = path_to_normal_dir,
                                       pattern_to_grab = "*.alfred.qc.summary.txt",
@@ -269,7 +270,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
                                       has_header = T,
                                       add_uniq_id = F)
     normal_alfreds$tumor_normal <- "Normal"
-    message(paste0("Found ", dplyr::n_distinct(normal_alfreds$Sample), " normal samples ..."))
+    message("Found ", dplyr::n_distinct(normal_alfreds$Sample), " normal samples ...")
 
   } else if(is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
     stop(message = "Must provide path to directories of tumor and normal Alfred QC summary files ...")
@@ -829,7 +830,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
                           has_header = T,
                           cpus = 1,
                           add_uniq_id = F)
-  message(paste0("Found ", dplyr::n_distinct(snvs$SAMPLE), " samples from ", dplyr::n_distinct(snvs$PATIENT), " patients with SNVs ..."))
+  message("Found ", dplyr::n_distinct(snvs$SAMPLE), " samples from ", dplyr::n_distinct(snvs$PATIENT), " patients with SNVs ...")
 
   indels <- aggregate_these(path_to_files = path_to_indel_dir,
                             pattern_to_grab = "*.hq.union.consensus.somatic.indel.txt.gz",
@@ -837,14 +838,14 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
                             has_header = T,
                             cpus = 1,
                             add_uniq_id = F)
-  message(paste0("Found ", dplyr::n_distinct(indels$SAMPLE), " samples from ", dplyr::n_distinct(indels$PATIENT), " patients with InDels ..."))
+  message("Found ", dplyr::n_distinct(indels$SAMPLE), " samples from ", dplyr::n_distinct(indels$PATIENT), " patients with InDels ...")
 
   # Sanity check if there is no overlap in samples/patients or if there is a missing sample/patient
   if(length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)) == 0) {
     message("No difference in set of samples between SNVs and InDels ...")
 
   } else if(length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)) > 0) {
-    message(paste0("Warning: Detected ", length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)), " samples in InDel sample set NOT in SNV sample set ..."))
+    message("Warning: Detected ", length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)), " samples in InDel sample set NOT in SNV sample set ...")
     setdiff_samples <- indels$SAMPLE[which(!indels$SAMPLE %in% unique(snvs$SAMPLE))]
     paint::paint(df = data.frame("Missing_Samples" = setdiff_samples))
     message("Recommend inspection ...")
@@ -857,8 +858,8 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 
   # Standard consensus filtering, no special cases
   if(is.null(strict_samples) & is.null(discovery_genes)) {
-    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
-    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
+    message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
+    message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
 
     hq_snvs <- snvs %>%
       dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter - 1)
@@ -867,9 +868,9 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 
     # Standard consensus filtering, plus special case to keep all muts for genes of interest
   } else if(is.null(strict_samples) & !is.null(discovery_genes)) {
-    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
-    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
-    message(paste0("Special case filter to maintain all calls for genes of interest ..."))
+    message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
+    message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
+    message("Special case filter to maintain all calls for genes of interest ...")
     paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
 
     consensus_non_discovery_snvs <- snvs %>%
@@ -888,9 +889,9 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 
     # Standard consensus filtering, plus special case to strictly filter specific samples
   } else if(!is.null(strict_samples) & is.null(discovery_genes)) {
-    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
-    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
-    message(paste0("Special case filter to strictly filter specific samples with +1 to consensus filters ..."))
+    message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
+    message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
+    message("Special case filter to strictly filter specific samples with +1 to consensus filters ...")
     paint::paint(df = data.frame("Strict_Samples" = strict_samples))
 
     consensus_non_strict_snvs <- snvs %>%
@@ -911,11 +912,11 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 
     # Standard consensus filtering, plus special case to keep all muts for genes of interest and to strictly filter specific samples
   } else if(!is.null(strict_samples) & !is.null(discovery_genes)) {
-    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
-    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
-    message(paste0("Special case filter to maintain all calls for genes of interest ..."))
+    message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
+    message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
+    message("Special case filter to maintain all calls for genes of interest ...")
     paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
-    message(paste0("Special case filter to strictly filter specific samples with +1 to consensus filters ..."))
+    message("Special case filter to strictly filter specific samples with +1 to consensus filters ...")
     paint::paint(df = data.frame("Strict_Samples" = strict_samples))
 
     consensus_non_discovery_strict_snvs <- snvs %>%
@@ -1223,11 +1224,88 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 }
 
 
+#' @name get_dryclean_segmentation
+#' @title Generate a segmentation file from a dryclean fragCounter read depth profile
+#'
+#' @description
+#' Given dryclean processed fragCounter read depth profile, run DNAcopy's CBS algorithm
+#' in a parallel manner to produce a segmentation file that is compatible with GISTIC2.0.
+#'
+#' @param path_to_dryclean_profile Path to dryclean fragCounter read depth profile
+#' @param threads Number of threads to use for parallel execution, default: 1
+#' @param random_seed Numeric value to use as random seed for consistent execution
+#'
+#' @return data.table object with required GISTIC2.0 columns
+#' @export
+get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, random_seed = 999) {
 
+  # Set parallel cores parameter
+  message("Setting parallel cores to ", threads, " ...")
+  doParallel::registerDoParallel(cores = threads)
 
+  # Display the random number used for this run
+  message("Setting random seed to ", random_seed, " ...")
+  set.seed(random_seed)
 
+  # Read in dryclean fragCounter coverage for normal sample
+  message("Reading in drycleaned fragCounter coverage ...")
+  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_profile, pattern = "\\..*dryclean.*rds"))
+  dryclean_frag_cov <- readRDS(file = path_to_dryclean_profile)
 
+  # Grab the drycleaned fragCounter foreground read coverage values
+  foreground_cov <- as.double(GenomicRanges::values(dryclean_frag_cov)[, "foreground"])
 
+  # Add very small constant value to move zero values to non-zero values before segmentation
+  zero_idx <- which(foreground_cov == 0)
+  if(length(zero_idx) > 0) {
+    small_const <- .Machine$double.eps
+    foreground_cov <- foreground_cov + small_const
+    message(paste(length(zero_idx),
+                  "coverage data points have zero value, adding small constant value",
+                  small_const,
+                  "to prevent log error ..."))
+  }
+
+  # Grab index of all non-NA drycleaned foreground read covearge
+  idx <- which(!is.na(foreground_cov))
+  foreground_cov_nona <- foreground_cov[idx]
+  seqnames_nona <- as.character(GenomicRanges::seqnames(dryclean_frag_cov))[idx]
+  start_nona <- GenomicRanges::start(dryclean_frag_cov)[idx]
+
+  # Begin foreach construct to parallelize the DNAcopy command per chromosome and then stitch the results together in a GRanges object
+  chrom_iter_list <- as.character(unique(dryclean_frag_cov@seqnames@values))
+  message("Running DNAcopy CBS segmentation workflow ...")
+
+  final_cbs_segmentation <- foreach::foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
+
+    # Grab chromosome specific data for run the DNAcopy workflow
+    per_chrom_idx <- which(seqnames_nona == chrom_iter_list[x])
+    log_signal_per_chrom <- log(foreground_cov_nona)[per_chrom_idx]
+    seqnames_per_chrom <- seqnames_nona[per_chrom_idx]
+    start_per_chrom <- start_nona[per_chrom_idx]
+
+    # Run DNAcopy CBS workflow
+    scna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
+                                   chrom = seqnames_per_chrom,
+                                   maploc = start_per_chrom,
+                                   data.type = 'logratio',
+                                   sampleid = sample_id)
+
+    scna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(scna_per_chrom),
+                                                    alpha = 1e-5,
+                                                    verbose = FALSE,
+                                                    undo.splits = "sdundo",
+                                                    undo.SD = 2)
+    scna_segmentation_per_chrom_dt <- data.table::as.data.table(scna_segmentation_per_chrom$output)
+
+    # Return output of the foreach loops, each DT obj will be concatenated
+    scna_segmentation_per_chrom_dt
+  }
+
+  # Return the DT of CBS output for easy downstream use
+  message("Segmentation finished ...")
+  return(final_cbs_segmentation)
+}
 
 
 

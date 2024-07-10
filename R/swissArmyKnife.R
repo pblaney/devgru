@@ -80,11 +80,11 @@
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
 # Split these into multiple rows just for better aesthetics as there are many
-DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=MappedProperFraction=NULL
+x=DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=MappedProperFraction=NULL
 MappedReverseFraction=MedianCoverage=MedianInsertSize=Sample=alignment_group=fraction=med_reads=NULL
 alignment_group=fraction=med_reads=median_count=tumor_normal=ALT=CALLER=REF=SAMPLE=total_indels=NULL
 total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=NULL
-FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=x=NULL
+FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -669,8 +669,6 @@ get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_di
 
 
 
-
-
 #' @name get_vaf
 #' @title Quick pull or explicitly calculate the VAF for mutation records of various flavors
 #'
@@ -794,7 +792,201 @@ get_vaf <- function(vcf_obj, caller, mut_type) {
   return(mut_vaf_and_reads)
 }
 
-# TODO: try to create Rsamtools RSeqLib bamUtils alternative to stay in R
+
+#' @name get_maf_lite
+#' @title Convert SNV & InDel mutation table to MAF-lite format
+#'
+#' @description
+#' Read in multiple MGP1000 union consensus SNV & InDel mutation tables, filter based on consensus threshold
+#' or sample/gene, merge all tables, calculate VAF, and prepare for downstream use in maf2maf or maf2vcf.
+#' The bare minimum for a MAF is Chromosome, Start_Position, Reference_Allele, Tumor_Seq_Allele2, Tumor_Sample_Barcode
+#' but will also include Matched_Norm_Sample_Barcode.
+#'
+#' @param path_to_snv_dir Path to directory of MGP1000 union consensus SNVs
+#' @param path_to_indel_dir Path to directory of MGP1000 union consensus InDels
+#' @param snv_consensus_filter Threshold consensus filter for SNVs
+#' @param indel_consensus_filter Threshold consensus filter for InDels
+#' @param strict_samples Samples that will be filtered with `*_consensus_filter``+1`
+#' @param discovery_genes Gene set vector used for discovery with `*_consensus_filter``=0`
+#' @param return_type Output either the converted maf-lite format table or data.table of standard format mutation table, default: maflite
+#'
+#' @return data.table like in either maf-lite or standard format
+#' @export
+get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filter = 2, indel_consensus_filter = 2,
+                         strict_samples = NULL, discovery_genes = NULL, return_type = "maflite") {
+
+  # Aggregate all SNV and InDel union-consensus files
+  # Perform sanity checks on patients and samples
+  message("Aggregate input mutations ...")
+  snvs <- aggregate_these(path_to_files = path_to_snv_dir,
+                          pattern_to_grab = "*.hq.union.consensus.somatic.snv.txt.gz",
+                          delim = "\t",
+                          has_header = T,
+                          cpus = 1,
+                          add_uniq_id = F)
+  message(paste0("Found ", dplyr::n_distinct(snvs$SAMPLE), " samples from ", dplyr::n_distinct(snvs$PATIENT), " patients with SNVs ..."))
+
+  indels <- aggregate_these(path_to_files = path_to_indel_dir,
+                            pattern_to_grab = "*.hq.union.consensus.somatic.indel.txt.gz",
+                            delim = "\t",
+                            has_header = T,
+                            cpus = 1,
+                            add_uniq_id = F)
+  message(paste0("Found ", dplyr::n_distinct(indels$SAMPLE), " samples from ", dplyr::n_distinct(indels$PATIENT), " patients with InDels ..."))
+
+  # Sanity check if there is no overlap in samples/patients or if there is a missing sample/patient
+  if(length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)) == 0) {
+    message("No difference in set of samples between SNVs and InDels ...")
+
+  } else if(length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)) > 0) {
+    message(paste0("Warning: Detected ", length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)), " samples in InDel sample set NOT in SNV sample set ..."))
+    setdiff_samples <- indels$SAMPLE[which(!indels$SAMPLE %in% unique(snvs$SAMPLE))]
+    paint::paint(df = data.frame("Missing_Samples" = setdiff_samples))
+    message("Recommend inspection ...")
+  }
+
+  # Now filter the data based on desired conditions
+  message("Beginning filtering for high-quality variants ...")
+  hq_snvs <- NULL
+  hq_indels <- NULL
+
+  # Standard consensus filtering, no special cases
+  if(is.null(strict_samples) & is.null(discovery_genes)) {
+    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
+    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
+
+    hq_snvs <- snvs %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter - 1)
+    hq_indels <- indels %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter - 1)
+
+    # Standard consensus filtering, plus special case to keep all muts for genes of interest
+  } else if(is.null(strict_samples) & !is.null(discovery_genes)) {
+    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
+    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
+    message(paste0("Special case filter to maintain all calls for genes of interest ..."))
+    paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
+
+    consensus_non_discovery_snvs <- snvs %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter - 1)
+    discovery_gene_snvs <- snvs %>%
+      dplyr::filter(nearest_gene %in% discovery_genes)
+    hq_snvs <- gUtils::rrbind(consensus_non_discovery_snvs, discovery_gene_snvs)
+
+    consensus_non_discovery_indels <- indels %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter - 1)
+    discovery_gene_indels <- indels %>%
+      dplyr::filter(nearest_gene %in% discovery_genes)
+    hq_indels <- gUtils::rrbind(consensus_non_discovery_indels, discovery_gene_indels)
+
+    # Standard consensus filtering, plus special case to strictly filter specific samples
+  } else if(!is.null(strict_samples) & is.null(discovery_genes)) {
+    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
+    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
+    message(paste0("Special case filter to strictly filter specific samples with +1 to consensus filters ..."))
+    paint::paint(df = data.frame("Strict_Samples" = strict_samples))
+
+    consensus_non_strict_snvs <- snvs %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter - 1)
+    strict_sample_snvs <- snvs %>%
+      dplyr::filter(SAMPLE %in% strict_samples) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter)
+    hq_snvs <- gUtils::rrbind(consensus_non_strict_snvs, strict_sample_snvs)
+
+    consensus_non_strict_indels <- indels %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter - 1)
+    strict_sample_indels <- indels %>%
+      dplyr::filter(SAMPLE %in% strict_samples) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter)
+    hq_indels <- gUtils::rrbind(consensus_non_strict_indels, strict_sample_indels)
+
+    # Standard consensus filtering, plus special case to keep all muts for genes of interest and to strictly filter specific samples
+  } else if(!is.null(strict_samples) & !is.null(discovery_genes)) {
+    message(paste0("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ..."))
+    message(paste0("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ..."))
+    message(paste0("Special case filter to maintain all calls for genes of interest ..."))
+    paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
+    message(paste0("Special case filter to strictly filter specific samples with +1 to consensus filters ..."))
+    paint::paint(df = data.frame("Strict_Samples" = strict_samples))
+
+    consensus_non_discovery_strict_snvs <- snvs %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter - 1)
+    discovery_gene_snvs <- snvs %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(nearest_gene %in% discovery_genes)
+    strict_sample_snvs <- snvs %>%
+      dplyr::filter(SAMPLE %in% strict_samples) %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= snv_consensus_filter)
+    hq_snvs <- gUtils::rrbind(consensus_non_discovery_strict_snvs, discovery_gene_snvs, strict_sample_snvs)
+
+    consensus_non_discovery_strict_indels <- indels %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter - 1)
+    discovery_gene_indels <- indels %>%
+      dplyr::filter(!SAMPLE %in% strict_samples) %>%
+      dplyr::filter(nearest_gene %in% discovery_genes)
+    strict_sample_indels <- indels %>%
+      dplyr::filter(SAMPLE %in% strict_samples) %>%
+      dplyr::filter(!nearest_gene %in% discovery_genes) %>%
+      dplyr::filter(stringr::str_count(string = CALLER, pattern = ",") >= indel_consensus_filter)
+    hq_indels <- gUtils::rrbind(consensus_non_discovery_strict_indels, discovery_gene_indels, strict_sample_indels)
+  }
+
+  # Combine HQ SNVs and InDels
+  message("Filter complete, merging to single SNV+InDel DT ...")
+  hq_muts <- gUtils::rrbind(hq_snvs, hq_indels)
+
+  # Calculate the read depth information for the MAF-like file
+  message("Calculate VAF for normal samples ...")
+
+  normal_read_colnames <- which(c("MUTECT_DP_NORMAL", "STRELKA_DP_NORMAL", "VARSCAN_DP_NORMAL", "SVABA_DP_NORMAL") %in% colnames(hq_muts))
+  normal_read_metrics <- hq_muts %>%
+    dplyr::select(c("MUTECT_DP_NORMAL", "STRELKA_DP_NORMAL", "VARSCAN_DP_NORMAL", "SVABA_DP_NORMAL")[normal_read_colnames])
+  dp_mean <- round(rowMeans(x = normal_read_metrics, na.rm = T), digits = 0)
+
+  alt_read_colnames <- which(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL") %in% colnames(hq_muts))
+  alt_read_metrics <- hq_muts %>%
+    dplyr::select(c("MUTECT_AD_ALT_NORMAL","STRELKA_alt_depth", "VARSCAN_AD_NORMAL", "SVABA_AD_NORMAL")[alt_read_colnames])
+  alt_mean <- round(rowMeans(x = alt_read_metrics, na.rm = T), digits = 0)
+
+  ref_mean <- dp_mean - alt_mean
+
+  # Now build the MAF-like DT for conversion with maftools
+  hq_muts_maf_lite_dt <- data.table::data.table("Chromosome" = hq_muts$seqnames,
+                                                "Start_Position" = hq_muts$start,
+                                                "Reference_Allele" = hq_muts$REF,
+                                                "Tumor_Seq_Allele2" = hq_muts$ALT,
+                                                "Tumor_Sample_Barcode" = hq_muts$TUMOR,
+                                                "Matched_Norm_Sample_Barcode" = hq_muts$NORMAL,
+                                                "Tumor_Total_Read_Depth" = hq_muts$total_depth_mean,
+                                                "Tumor_Variant_Allele_Depth" = hq_muts$alt_read_depth_mean,
+                                                "Tumor_Reference_Allele_Depth" = hq_muts$total_depth_mean - hq_muts$alt_read_depth_mean,
+                                                "Normal_Total_Read_Depth" = dp_mean,
+                                                "Normal_Variant_Read_Depth" = alt_mean,
+                                                "Normal_Reference_Allele_Depth" = ref_mean)
+  # Final output
+  if(return_type == "maf.lite") {
+    message("MAF-lite generated ...")
+    paint::paint(hq_muts_maf_lite_dt)
+    return(hq_muts_maf_lite_dt)
+
+    # return the non-transformed post-filtered mutation table for QC
+  } else if(return_type == "data.table") {
+    message("Mutation table generated ...")
+    paint::paint(hq_muts)
+    return(hq_muts)
+  }
+}
+
+
 #' @name get_allele_counts
 #' @title Read in a BAM file, collect read counts for alleles at set of mutation loci using alleleCounter, and convert to data.table object
 #'

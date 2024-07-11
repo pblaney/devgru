@@ -1288,8 +1288,7 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, ran
     scna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
                                    chrom = seqnames_per_chrom,
                                    maploc = start_per_chrom,
-                                   data.type = 'logratio',
-                                   sampleid = sample_id)
+                                   data.type = 'logratio')
 
     scna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(scna_per_chrom),
                                                     alpha = 1e-5,
@@ -1297,6 +1296,7 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, ran
                                                     undo.splits = "sdundo",
                                                     undo.SD = 2)
     scna_segmentation_per_chrom_dt <- data.table::as.data.table(scna_segmentation_per_chrom$output)
+    scna_segmentation_per_chrom_dt$ID <- sample_id
 
     # Return output of the foreach loops, each DT obj will be concatenated
     scna_segmentation_per_chrom_dt

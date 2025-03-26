@@ -1,14 +1,14 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# devgru <img src="man/figures/devgruLogo.png" align="right" width="425" />
+# devgru <img src="man/figures/devgruLogo.png" align="right" width="390" />
 
 <!-- badges: start -->
 <!-- badges: end -->
 
 A developmental `R` environment for a suite of `GenomicRanges` utilities
 
-## Installation
+### Installation
 
 You can install `devgru` with:
 
@@ -16,9 +16,9 @@ You can install `devgru` with:
 devtools::install_github("pblaney/devgru")
 ```
 
-## Suite of Packages
+### Suite of Packages
 
-The current suite of utilites for `devgru` can be quickly installed, if
+The current suite of utilities for `devgru` can be quickly installed, if
 needed, and loaded with:
 
 ``` r

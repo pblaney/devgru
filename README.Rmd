@@ -15,14 +15,17 @@ knitr::opts_chunk$set(
 )
 ```
 
-# devgru <img src="man/figures/devgruLogo.png" align="right" width="425" />
+# devgru <img src="man/figures/devgruLogo.png" align="right" width="390" />
+
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-A developmental `R` environment for a suite of `GenomicRanges` utilities
 
-## Installation
+A developmental `R` environment for 
+a suite of `GenomicRanges` utilities
+
+### Installation
 
 You can install `devgru` with:
 
@@ -30,9 +33,9 @@ You can install `devgru` with:
 devtools::install_github("pblaney/devgru")
 ```
 
-## Suite of Packages
+### Suite of Packages
 
-The current suite of utilites for `devgru` can be quickly installed, if needed, and loaded with:
+The current suite of utilities for `devgru` can be quickly installed, if needed, and loaded with:
 
 ``` r
 kit_loadout()

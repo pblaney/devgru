@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# devgru <img src="man/figures/devgruLogo.png" align="right" width="390" />
+# devgru <img src="man/figures/devgruLogo.png" align="right" width="250" />
 
 <!-- badges: start -->
 <!-- badges: end -->

@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-# devgru <img src="man/figures/devgruLogo.png" align="right" width="390" />
+# devgru <img src="man/figures/devgruLogo.png" align="right" width="250" />
 
 
 <!-- badges: start -->

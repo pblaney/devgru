@@ -6,7 +6,10 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-A developmental `R` environment for a suite of `GenomicRanges` utilities
+A developmental `R` environment for a suite of `GenomicRanges`
+utilities. This release contains the snapshot of the code repository
+state when used in the Daytona release of the
+[`mgp1000`](https://github.com/pblaney/mgp1000).
 
 ## Installation
 
@@ -18,7 +21,7 @@ devtools::install_github("pblaney/devgru")
 
 ## Suite of Packages
 
-The current suite of utilites for `devgru` can be quickly installed, if
+The current suite of utilities for `devgru` can be quickly installed, if
 needed, and loaded with:
 
 ``` r
@@ -26,6 +29,10 @@ kit_loadout()
 ```
 
 #### GenomicRanges Core
+
+See [this
+tutorial](https://bioconductor.org/help/course-materials/2015/Uruguay2015/V3-GenomicRanges.html)
+for a great fundamental breakdown of working with `GenomicRanges`
 
 - [`BSgenome.Hsapiens.UCSC.hg38`](https://bioconductor.org/packages/release/data/annotation/html/BSgenome.Hsapiens.UCSC.hg38.html)
 - [`GenomicRanges`](https://bioconductor.org/packages/release/bioc/html/GenomicRanges.html)

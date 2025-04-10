@@ -19,3 +19,17 @@ Single command to refactor all seq details of a GRanges object to easily harmoni
 By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, see \code{gUtils::hg_seqlengths()}
 Users can adjust this using the \code{new_levels} parameter.
 }
+\examples{
+# Converting between reference genomes is complicated and proper seqinfo is hard
+# to achieve without many lines of code, this function helps alleviate the issue
+
+# Look at seqinfo from a hg19 dataset
+GenomeInfoDb::seqinfo(kras_dnase_demo_gr_hg19)
+
+# Look at seqinfo after lift over to hg38
+GenomeInfoDb::seqinfo(example_dnase_hg38)
+
+# Use gr_refactor_seqs to fix the inconsistencies
+GenomeInfoDb::seqinfo(gr_refactor_seqs(example_dnase_hg38))
+
+}

@@ -136,4 +136,5 @@ braf_dnase_demo_dt_hg38 <- gUtils::gr.findoverlaps(query = example_dnase_hg38,
 
 usethis::use_data(example_dnase_hg38,
                   kras_dnase_demo_gr_hg19, kras_dnase_demo_gr_hg38,
-                  braf_dnase_demo_dt_hg19, braf_dnase_demo_dt_hg38, internal = TRUE, compress = "xz")
+                  braf_dnase_demo_dt_hg19, braf_dnase_demo_dt_hg38,
+                  internal = TRUE, compress = "xz", overwrite = TRUE)

@@ -25,7 +25,6 @@ Imports:
     stringr,
     S4Vectors,
     Biostrings,
-    librarian,
     doParallel,
     foreach,
     R.utils,
@@ -41,7 +40,11 @@ Imports:
     ggridges,
     stats,
     ggfittext,
-    DNAcopy
+    DNAcopy,
+    cli,
+    pak,
+    crayon,
+    pio
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

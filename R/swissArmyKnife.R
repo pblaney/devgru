@@ -80,7 +80,8 @@
 #' @importFrom purrr as_vector
 #' @importFrom ggridges stat_density_ridges
 #' @importFrom ggfittext geom_bar_text
-#' @importFrom paint paint
+#' @importFrom hms hms
+#' @importFrom utils packageVersion
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -230,8 +231,11 @@ cli_stopwatch_start <- function(package = "devgru", function_name) {
 #'  and passed along by `cli_stopwatch_start()`, see examples
 #'
 #' @examples
-#' process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
-#' process_end <- cli_stopwatch_end(package = "devgru", function_name = "workflow_demo_func", stopwatch_start = process_start)
+#' process_start <- cli_stopwatch_start(package = "devgru",
+#'                                      function_name = "workflow_demo_func")
+#' process_end <- cli_stopwatch_end(package = "devgru",
+#'                                  function_name = "workflow_demo_func",
+#'                                  stopwatch_start = process_start)
 #'
 #' @export
 cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start) {
@@ -270,13 +274,15 @@ cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start
 #' # workflow_demo_func <- function(parameter_x, parameter_y)
 #' # then the function_cli_intro is called within the function
 #'
-#' function_cli_intro(package = "devgru", function_name = "workflow_demo_func", parameter_x, parameter_y)
+#' function_cli_intro(package = "devgru",
+#'                    function_name = "workflow_demo_func",
+#'                    parameter_x, parameter_y)
 #'
 #' @export
 function_cli_intro <- function(package = "devgru", function_name, ...) {
   # Show package
   cli_pio_colorscheme()
-  pio::pioHdr(package, paste0("v",packageVersion(package)))
+  pio::pioHdr(package, paste0("v",utils::packageVersion(package)))
   cli::cli_rule()
   cat("\n")
   # Show function
@@ -315,7 +321,7 @@ function_cli_intro <- function(package = "devgru", function_name, ...) {
 #' # kit_loadout(update_kit = T)
 #'
 #' @export
-kit_loadout <- function(update_kit = F, verbose = T) {
+kit_loadout <- function(update_kit = F) {
   process_start <- cli_stopwatch_start(function_name = "kit_loadout")
   logo_viz <- "
                    ___   ___        ____   ____
@@ -475,9 +481,11 @@ dt_to_gr <- function(input_dt) {
 #' # Just a GR
 #' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38)
 #' # GR with correct columns
-#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38, expected_cols = c("signalValue","pValue","biospecimen","gene"))
+#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38,
+#'                expected_cols = c("signalValue","pValue","biospecimen","gene"))
 #' # GR with less columns than expected
-#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3], expected_cols = c("signalValue","pValue","biospecimen","gene"))
+#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3],
+#'                expected_cols = c("signalValue","pValue","biospecimen","gene"))
 #'
 #' @export
 gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
@@ -540,9 +548,11 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
 #' # Just a DT
 #' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
 #' # DT with correct columns
-#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38,
+#'                expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
 #' # DT with less columns than expected
-#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7], expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7],
+#'                expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
 #'
 #' @export
 dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
@@ -612,14 +622,6 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #'  to not exceed, default: NULL
 #'
 #' @examples
-#' # Not a DT
-#' dt_sanitycheck(query_dt = kras_dnase_demo_gr_hg38)
-#' # Just a DT
-#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
-#' # DT with correct columns
-#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
-#' # DT with less columns than expected
-#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-3], expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
 #'
 #' @export
 gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {

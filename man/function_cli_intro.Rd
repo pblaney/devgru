@@ -27,6 +27,8 @@ parameter_y <- "demo"
 # workflow_demo_func <- function(parameter_x, parameter_y)
 # then the function_cli_intro is called within the function
 
-function_cli_intro(package = "devgru", function_name = "workflow_demo_func", parameter_x, parameter_y)
+function_cli_intro(package = "devgru",
+                   function_name = "workflow_demo_func",
+                   parameter_x, parameter_y)
 
 }

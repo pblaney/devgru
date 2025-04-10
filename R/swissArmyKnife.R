@@ -110,7 +110,7 @@ FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
 
 #
 #
-# }}}}------->>> Internal data
+# }}}}------->>> Data for analysis and demos
 #
 #
 
@@ -168,6 +168,39 @@ NULL
 #' @keywords data
 #' @format \code{data.table}
 NULL
+
+#' Collection of genomic regions to exclude from analysis on hg38 as GRanges
+#'
+#' A convenient single collection of genomic regions suggested to exclude from
+#' analysis due to mappability issues, enrichment of duplicated regions,
+#' telomeric, centromeric, acrocentric short-arms, and highly heterochromatin/gene
+#' desert portions of the chromosomes.
+#'
+#' Built from UCSC and ENCODE blacklists.
+#' See excluderanges (https://github.com/dozmorovlab/excluderanges).
+#'
+#' @name exclusion_regions_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
+#' Genomic coordinates of each chromosome arm on hg38 as GRanges
+#'
+#' A convenient single collection of the genomic span of each chromosome arm.
+#' The span is described as:
+#' p-arm         start |<-------->| centromere
+#' q-arm    centromere |<-------->| end
+#'
+#' Note, this data does not include a range across the centromeres, for these
+#' see `exclusion_regions_hg38`.
+#'
+#' @name chromosome_arms_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
 
 #
 #
@@ -315,7 +348,7 @@ function_cli_intro <- function(package = "devgru", function_name, ...) {
 #'
 #' @examples
 #' # Quick start devgru environment
-#' kit_loadout()
+#' # kit_loadout()
 #'
 #' # Update the suite of packages used in the kit
 #' # kit_loadout(update_kit = T)
@@ -549,10 +582,12 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
 #' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
 #' # DT with correct columns
 #' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38,
-#'                expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#'                expected_cols = c("seqnames","start","end","strand","signalValue",
+#'                                  "pValue","biospecimen","gene"))
 #' # DT with less columns than expected
 #' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7],
-#'                expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#'                expected_cols = c("seqnames","start","end","strand","signalValue",
+#'                                  "pValue","biospecimen","gene"))
 #'
 #' @export
 dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
@@ -620,8 +655,6 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #'  to not exceed, default: NULL
 #' @param end_flank_boundary The genomic coordinate the end of the flanked GRanges should
 #'  to not exceed, default: NULL
-#'
-#' @examples
 #'
 #' @export
 gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {

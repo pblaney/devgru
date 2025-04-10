@@ -4,7 +4,7 @@
 \alias{kit_loadout}
 \title{Build the devgru environment by installing/loading packages}
 \usage{
-kit_loadout(update_kit = F, verbose = T)
+kit_loadout(update_kit = F)
 }
 \arguments{
 \item{update_kit}{Update all packages even if already installed, default: FALSE}
@@ -14,7 +14,7 @@ Single command to install, if needed, and load all packages used in the devgru k
 }
 \examples{
 # Quick start devgru environment
-kit_loadout()
+# kit_loadout()
 
 # Update the suite of packages used in the kit
 # kit_loadout(update_kit = T)

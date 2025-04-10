@@ -18,7 +18,10 @@ and passed along by \code{cli_stopwatch_start()}, see examples}
 Display to the user the workflow has ended, stop the stopwatch, and display execution time.
 }
 \examples{
-process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
-process_end <- cli_stopwatch_end(package = "devgru", function_name = "workflow_demo_func", stopwatch_start = process_start)
+process_start <- cli_stopwatch_start(package = "devgru",
+                                     function_name = "workflow_demo_func")
+process_end <- cli_stopwatch_end(package = "devgru",
+                                 function_name = "workflow_demo_func",
+                                 stopwatch_start = process_start)
 
 }

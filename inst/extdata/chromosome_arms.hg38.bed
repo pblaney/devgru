@@ -1,4 +1,4 @@
-seqnames	start	end	arm
+chrom	start	end	arm
 chr1	1	122026459	p
 chr1	124932724	248956422	q
 chr2	1	92188145	p

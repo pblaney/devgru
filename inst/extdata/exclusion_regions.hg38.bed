@@ -1,4 +1,4 @@
-seqnames	start	end	exclusion_segment
+chrom	start	end	exclusion_segment
 chr1	1	10000	telomere
 chr1	628903	635104	dac_blacklist
 chr1	5850087	5850571	dac_blacklist

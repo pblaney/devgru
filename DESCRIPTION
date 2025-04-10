@@ -44,7 +44,9 @@ Imports:
     cli,
     pak,
     crayon,
-    pio
+    pio,
+    hms
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook
+LazyData: true

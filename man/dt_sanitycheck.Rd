@@ -22,8 +22,12 @@ dt_sanitycheck(query_dt = kras_dnase_demo_gr_hg38)
 # Just a DT
 dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
 # DT with correct columns
-dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38,
+               expected_cols = c("seqnames","start","end","strand","signalValue",
+                                 "pValue","biospecimen","gene"))
 # DT with less columns than expected
-dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7], expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7],
+               expected_cols = c("seqnames","start","end","strand","signalValue",
+                                 "pValue","biospecimen","gene"))
 
 }

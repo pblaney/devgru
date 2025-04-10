@@ -35,14 +35,3 @@ per chromosome basis.
 
 If the flank exceeds the boundary, the new flanked start/end will set at the boundary.
 }
-\examples{
-# Not a DT
-dt_sanitycheck(query_dt = kras_dnase_demo_gr_hg38)
-# Just a DT
-dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
-# DT with correct columns
-dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
-# DT with less columns than expected
-dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-3], expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
-
-}

@@ -22,8 +22,10 @@ gr_sanitycheck(query_gr = braf_dnase_demo_dt_hg38)
 # Just a GR
 gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38)
 # GR with correct columns
-gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38, expected_cols = c("signalValue","pValue","biospecimen","gene"))
+gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38,
+               expected_cols = c("signalValue","pValue","biospecimen","gene"))
 # GR with less columns than expected
-gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3], expected_cols = c("signalValue","pValue","biospecimen","gene"))
+gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3],
+               expected_cols = c("signalValue","pValue","biospecimen","gene"))
 
 }

@@ -62,8 +62,11 @@
 #' @import ggside
 #' @import stats
 #' @import DNAcopy
+#' @import crayon
+#' @import cli
+#' @import pio
 
-#' @importFrom librarian shelf
+#' @importFrom pak pkg_install
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
 #' @importFrom rtracklayer import
 #' @importFrom readr read_delim
@@ -77,6 +80,7 @@
 #' @importFrom purrr as_vector
 #' @importFrom ggridges stat_density_ridges
 #' @importFrom ggfittext geom_bar_text
+#' @importFrom paint paint
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -91,7 +95,7 @@ FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
 .onLoad <- function(libname, pkgname) {
   op <- options()
   op.devgru <- list(
-  	devgru.ref_genome = "hg38"
+    devgru.ref_genome = "hg38"
   )
   toset <- !(names(op.devgru) %in% names(op))
   if (any(toset)) options(op.devgru[toset])
@@ -103,6 +107,197 @@ FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
   invisible()
 }
 
+#
+#
+# }}}}------->>> Internal data
+#
+#
+
+#' DNAaseI hypersensitivity sites on hg38
+#'
+#' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
+#' hg19 that has been lifted over to hg38 using `rtracklayer::liftOver()`
+#'
+#' @name example_dnase_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
+#' DNAaseI hypersensitivity sites for KRAS on hg19 as GRanges
+#'
+#' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
+#' hg19, subset to the KRAS locus with 1000 bp flank.
+#'
+#' @name kras_dnase_demo_gr_hg19
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
+#' DNAaseI hypersensitivity sites for KRAS on hg38 as GRanges
+#'
+#' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
+#' hg38 liftover, subset to the KRAS locus with 1000 bp flank.
+#'
+#' @name kras_dnase_demo_gr_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
+#' DNAaseI hypersensitivity sites for BRAF on hg19 as data.table
+#'
+#' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
+#' hg19, subset to the BRAF locus with 1000 bp flank.
+#'
+#' @name braf_dnase_demo_dt_hg19
+#' @docType data
+#' @keywords data
+#' @format \code{data.table}
+NULL
+
+#' DNAaseI hypersensitivity sites for BRAF on hg38 as data.table
+#'
+#' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
+#' hg38 liftover, subset to the BRAF locus with 1000 bp flank.
+#'
+#' @name braf_dnase_demo_dt_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{data.table}
+NULL
+
+#
+#
+# }}}}------->>> CLI for talking the user through the package
+#
+#
+
+#' @name cli_pio_colorscheme
+#' @title Set the color scheme options for pio CLI text in devgru
+#'
+#' @description
+#' Quickly set the options for pio package CLI text output.
+#'
+#' @examples
+#' cli_pio_colorscheme()
+#'
+#' @export
+cli_pio_colorscheme <- function () {
+  options(pio.header_bg_colour = crayon::bgBlack)
+  options(pio.header_fg_colour = crayon::cyan)
+  options(pio.title_sep_colour = crayon::cyan)
+  options(pio.title_fg_colour = crayon::cyan)
+  options(pio.string_bg_colour = crayon::bgBlack)
+  options(pio.string_fg_colour = crayon::cyan)
+}
+
+#' @name cli_stopwatch_start
+#' @title Verbose CLI output to designate a workflow start
+#'
+#' @description
+#' Display to the user the workflow has begun, the function that launched it, and
+#' start the stopwatch to track execution time,
+#'
+#' @param package What is the package of the function, default: devgru
+#' @param function_name What is the function name
+#'
+#' @examples
+#' process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
+#' process_start
+#'
+#' @export
+cli_stopwatch_start <- function(package = "devgru", function_name) {
+  # Time stamp start
+  cli::cli_rule("{crayon::green('Start')}")
+  cli::cli_text("{crayon::cyan({package})} :: {.emph {.pkg {function_name}()}} ",
+                as.character(Sys.time()))
+  # Stopwatch start
+  stopwatch_start <- proc.time()
+  return(stopwatch_start)
+}
+
+#' @name cli_stopwatch_end
+#' @title Verbose CLI output to designate a workflow end
+#'
+#' @description
+#' Display to the user the workflow has ended, stop the stopwatch, and display execution time.
+#'
+#' @param package What is the package of the function, default: devgru
+#' @param function_name What is the function name
+#' @param stopwatch_start What was the start time of the stopwatch, typically captured
+#'  and passed along by `cli_stopwatch_start()`, see examples
+#'
+#' @examples
+#' process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
+#' process_end <- cli_stopwatch_end(package = "devgru", function_name = "workflow_demo_func", stopwatch_start = process_start)
+#'
+#' @export
+cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start) {
+  # Time stamp stop
+  cli::cli_rule("{crayon::red('Stop')}")
+  cli::cli_text("{crayon::cyan({package})} :: {.emph {.pkg {function_name}()}} ",
+                as.character(Sys.time()))
+  stopwatch_end <- proc.time() - stopwatch_start
+
+  # Convert to human table of hours,minutes,seconds
+  hms_table <- stringr::str_split(string = hms::hms(stopwatch_end[3]), pattern = ":", simplify = T)
+  colnames(hms_table) <- c("hours","minutes","seconds")
+  cli::cli_alert_info("Duration {crayon::white(clisymbols::symbol$ellipsis)}")
+  paint::paint(as.data.table(hms_table))
+}
+
+
+#' @name function_cli_intro
+#' @title Verbose CLI output for extended and rich description of steps along a
+#'  complex workflow, typically used in a pipeline
+#'
+#' @description
+#' Display to the user the main package, the function being executed, and the parameters
+#' passed to the function.
+#'
+#' @param package What is the package of the function, default: devgru
+#' @param function_name What is the function name
+#' @param ... What parameters were used in the function
+#'
+#' @examples
+#' # For demo purposes, set these variables
+#' parameter_x <- 100
+#' parameter_y <- "demo"
+#'
+#' # In practice, these variables are set within the function being called as in below:
+#' # workflow_demo_func <- function(parameter_x, parameter_y)
+#' # then the function_cli_intro is called within the function
+#'
+#' function_cli_intro(package = "devgru", function_name = "workflow_demo_func", parameter_x, parameter_y)
+#'
+#' @export
+function_cli_intro <- function(package = "devgru", function_name, ...) {
+  # Show package
+  cli_pio_colorscheme()
+  pio::pioHdr(package, paste0("v",packageVersion(package)))
+  cli::cli_rule()
+  cat("\n")
+  # Show function
+  cli::cli_alert(text = "Launching {.emph {.pkg {function_name}()}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  cat("\n")
+  # show params if provided
+  params <- list(...)
+  params_names <- lapply(substitute(list(...))[-1], deparse)
+  if(length(params) != 0) {
+    # Construct the parameter CLI
+    params_string <- c()
+    for(i in 1:length(params)) {
+      params_string <- append(x = params_string,
+                              values = paste0("{crayon::green('", params_names[i], "')} = ", params[i]))
+    }
+    cli::cli_text("*****************************  {crayon::green('PARAMS')}  *****************************")
+    cli::cli_ul(params_string)
+    cli::cli_text("*****************************************************************")
+    cat("\n")
+  }
+}
 
 #' @name kit_loadout
 #' @title Build the devgru environment by installing/loading packages
@@ -110,19 +305,25 @@ FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
 #' @description
 #' Single command to install, if needed, and load all packages used in the devgru kit.
 #'
-#' @param update_kit Update all packages even if already installed, default: TRUE
+#' @param update_kit Update all packages even if already installed, default: FALSE
+#'
+#' @examples
+#' # Quick start devgru environment
+#' kit_loadout()
+#'
+#' # Update the suite of packages used in the kit
+#' # kit_loadout(update_kit = T)
 #'
 #' @export
-kit_loadout <- function(update_kit = F) {
-
+kit_loadout <- function(update_kit = F, verbose = T) {
+  process_start <- cli_stopwatch_start(function_name = "kit_loadout")
   logo_viz <- "
-#                   ___   ___        ____   ____                          #
-#                    | | |     |   /  |     |   | |   |                   #
-# }}}}------->>>     + | |-+-  |  +   | +-  |-+-  |   |    <<<-------{{{{ #
-#                    | | |     | /    |   | |  \\  |   |                   #
-#                   ---   ---   /      ---      \\  ---                    #
+                   ___   ___        ____   ____
+                    | | |     |   /  |     |   | |   |
+ }}}}------->>>     + | |-+-  |  +   | +-  |-+-  |   |    <<<-------{{{{
+                    | | |     | /    |   | |  \\  |   |
+                   ---   ---   /      ---      \\  ---
 "
-
   # Packages for loadout
   loadout <- c("BSgenome.Hsapiens.UCSC.hg38", "GenomicRanges", "GenomeInfoDb",
                "data.table", "mskilab-org/gUtils", "VariantAnnotation",
@@ -131,47 +332,36 @@ kit_loadout <- function(update_kit = F) {
                "flextable", "mclust", "parallel", "doParallel", "foreach",
                "R.utils")
 
-  loadout_string <- "
-  ### GenomicRanges Core ###
-
-  BSgenome.Hsapiens.UCSC.hg38
-  GenomicRanges
-  GenomeInfoDb
-  data.table
-  mskilab-org/gUtils
-  VariantAnnotation
-  rtracklayer
-  Biostrings
-  S4Vectors
-
-  ### Utility Core ###
-
-  dplyr
-  stringr
-  readr
-  ggplot2
-  ggsci
-  paletteer
-  scico
-  flextable
-  mclust
-  parallel
-  doParallel
-  foreach
-  R.utils
-  "
-  message(logo_viz)
-  message("Building the devgru kit ...")
-  message("Loadout currently includes:\n\t", loadout_string)
-  librarian::shelf(loadout, update_all = update_kit, quiet = T)
-  message("D O N E ...")
+  # The set of packages used to work on GenomicRanges objects
+  gr_core_pkgs <- data.frame("GenomicRanges Core" = c("BSgenome.Hsapiens.UCSC.hg38","GenomicRanges",
+                                                      "GenomeInfoDb","data.table","mskilab-org/gUtils",
+                                                      "VariantAnnotation","rtracklayer","Biostrings",
+                                                      "S4Vectors"))
+  # The set of packages used to add more functionality on top to GenomicRanges objects
+  util_core_pkgs <- data.frame("Utility Core" = c("dplyr","stringr","readr","ggplot2","ggsci",
+                                                  "paletteer","scico","flextable","mclust","parallel",
+                                                  "doParallel","foreach","R.utils"))
+  # Output the logo
+  cat(logo_viz)
+  # CLI to show the packages in the kit
+  cat("\n")
+  cli::cli_alert_info("Building the {.pkg devgru} kit {crayon::white(clisymbols::symbol$ellipsis)}")
+  cli::cli_alert_info("Loadout currently includes:")
+  options(paint_max_width = 1000)
+  paint::paint(gr_core_pkgs)
+  paint::paint(util_core_pkgs)
+  # Load the packages with librarian
+  pak::pkg_install(pkg = loadout, upgrade = update_kit)
+  cat("\n")
+  process_end <- cli_stopwatch_end(function_name = "kit_loadout",
+                                   stopwatch_start = process_start)
 }
 
-# }}}}------->>>
 #
-#  Tools for surveying the GenomicRanges
 #
-# }}}}------->>>
+# }}}}------->>> Tools for surveying the GenomicRanges
+#
+#
 
 #' @name gr_refactor_seqs
 #' @title Refactor seqinfo, seqnames, seqlengths, seqlevels of GRanges object for easy harmony
@@ -184,13 +374,24 @@ kit_loadout <- function(update_kit = F) {
 #' @param input_gr GenomicRanges object to refactor
 #' @param new_levels Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
+#' @examples
+#' # Converting between reference genomes is complicated and proper seqinfo is hard
+#' # to achieve without many lines of code, this function helps alleviate the issue
+#'
+#' # Look at seqinfo from a hg19 dataset
+#' GenomeInfoDb::seqinfo(kras_dnase_demo_gr_hg19)
+#'
+#' # Look at seqinfo after lift over to hg38
+#' GenomeInfoDb::seqinfo(example_dnase_hg38)
+#'
+#' # Use gr_refactor_seqs to fix the inconsistencies
+#' GenomeInfoDb::seqinfo(gr_refactor_seqs(example_dnase_hg38))
+#'
 #' @return GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
-
   # First, make sure we match input GR 'chr' notation with the desired seqs
   if(length(grep(x = names(new_levels), pattern = "^chr")) > 0) {
-
     gr <- gUtils::gr.chr(input_gr)
   } else {
     gr <- gUtils::gr.nochr(input_gr)
@@ -214,15 +415,273 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 
   # Final sort to ensure ranges are properly sorted by genomic coordinate
   gr <- GenomicRanges::sort.GenomicRanges(gr, ignore.strand = TRUE)
+
+  # And complete the remaining seqinfo columns for genome and isCircular
+  GenomeInfoDb::genome(gr) <- "GRCh38"
+  GenomeInfoDb::isCircular(gr) <- rep(FALSE,24)
   return(gr)
 }
 
+#' @name dt_to_gr
+#' @title Convert data.table to GRanges Object
+#'
+#' @description
+#' Single command to smartly convert a data.table object to a GRanges object by
+#' wrapping `gr_refactor_seqs` around the `gUtils::dt2gr()` to avoid seqinfo conflicts
+#' and apply proper sorting.
+#'
+#' @param input_dt data.table object that minimally contains columns like chromosome start, and end position
+#'  that describe the genomic coordinates of the range
+#'
+#' @examples
+#' # Converting from data.table to GRanges can be easily done with gUtils::dt2gr()
+#' # however this single command conversion leaves some loose ends with the seqinfo
+#'
+#' # Look at the original data.table
+#' braf_dnase_demo_dt_hg38
+#' # Now convert to GRanges
+#' dt_to_gr(braf_dnase_demo_dt_hg38)
+#' # Check the seqinfo
+#' GenomeInfoDb::seqinfo(dt_to_gr(braf_dnase_demo_dt_hg38))
+#'
+#' # Compared to the old way
+#' # Conversion looks fine
+#' gUtils::dt2gr(braf_dnase_demo_dt_hg38)
+#' # However the seqinfo will conflict with other hg38 GRanges
+#' GenomeInfoDb::seqinfo(gUtils::dt2gr(braf_dnase_demo_dt_hg38))
+#'
+#' @export
+dt_to_gr <- function(input_dt) {
+  # Wrap the dt2gr function with the gr_refactor_seqs function
+  gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(input_dt, seqlengths = gUtils::hg_seqlengths()[1:24]),
+                         new_levels = gUtils::hg_seqlengths()[1:24])
+  return(gr)
+}
 
+#' @name gr_sanitycheck
+#' @title Check if input is a GRanges object, plus optional sanity check of column names
+#'
+#' @description
+#' Simple check if the input is a GRanges object, plus includes an additional functionality
+#' to perform a smart, transparent sanity check of expected column names.
+#'
+#' @param query_gr Suspected GRanges-like object to test
+#' @param expected_cols Vector of character strings to check for consistency in
+#'  columns of query GRanges, default: NULL
+#'
+#' @examples
+#' # Not a GR
+#' gr_sanitycheck(query_gr = braf_dnase_demo_dt_hg38)
+#' # Just a GR
+#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38)
+#' # GR with correct columns
+#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38, expected_cols = c("signalValue","pValue","biospecimen","gene"))
+#' # GR with less columns than expected
+#' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3], expected_cols = c("signalValue","pValue","biospecimen","gene"))
+#'
+#' @export
+gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
+  # Generic check if query is a GR obj
+  # No constrait on expected number of columns
+  if(is.null(expected_cols)) {
+    if(inherits(query_gr, "GenomicRanges")) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+    # Specific check if query is a GR obj
+    # Must have expected number of columns
+    # Should only be used for defined workflows
+  } else if(!is.null(expected_cols)) {
+    # First check if GR, then add constraints
+    if(inherits(query_gr, "GenomicRanges")) {
+      # Check if columns are equal
+      if(length(colnames(S4Vectors::mcols(query_gr))) == length(expected_cols)) {
+        # Check if columns are same as expected
+        if(all.equal(target = expected_cols, current = colnames(S4Vectors::mcols(query_gr)))) {
+          return(TRUE)
+        } else {
+          pio::pioDisp(gUtils::gr2dt(query_gr))
+          cli::cli_alert_danger(all.equal(target = expected_cols, current = colnames(S4Vectors::mcols(query_gr))))
+          return(FALSE)
+        }
+        # Columns are not equal
+      } else if(length(colnames(S4Vectors::mcols(query_gr))) > length(expected_cols)) {
+        extra_cols <- colnames(S4Vectors::mcols(query_gr))[which(!colnames(S4Vectors::mcols(query_gr)) %in% expected_cols)]
+        pio::pioDisp(gUtils::gr2dt(query_gr))
+        cli::cli_alert_danger("Input GenomicRanges object had more columns than expected - extra columns: {crayon::red({extra_cols})}")
+        return(FALSE)
+      } else if(length(colnames(S4Vectors::mcols(query_gr))) < length(expected_cols)) {
+        missing_cols <- expected_cols[which(!expected_cols %in% colnames(S4Vectors::mcols(query_gr)))]
+        pio::pioDisp(gUtils::gr2dt(query_gr))
+        cli::cli_alert_danger("Input GenomicRanges object had less columns than expected - missing columns: {crayon::red({missing_cols})}")
+        return(FALSE)
+      }
+    } else {
+      return(FALSE)
+    }
+  }
+}
 
+#' @name dt_sanitycheck
+#' @title Check if input is a data.table object, plus optional sanity check of column names
+#'
+#' @description
+#' Simple check if the input is a data.table object, plus includes an additional functionality
+#' to perform a smart, transparent sanity check of expected column names.
+#'
+#' @param query_dt Suspected data.table-like object to test
+#' @param expected_cols Vector of character strings to check for consistency in
+#'  columns of query data.table, default: NULL
+#'
+#' @examples
+#' # Not a DT
+#' dt_sanitycheck(query_dt = kras_dnase_demo_gr_hg38)
+#' # Just a DT
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
+#' # DT with correct columns
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#' # DT with less columns than expected
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7], expected_cols = c("seqnames","start","end","strand","signalValue","pValue","biospecimen","gene"))
+#'
+#' @export
+dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
+  # Generic check if query is a DT obj
+  # No constrait on expected number of columns
+  if(is.null(expected_cols)) {
+    if(inherits(query_dt, "data.table")) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+    # Specific check if query is a DT obj
+    # Must have expected number of columns
+    # Should only be used for defined workflows
+  } else if(!is.null(expected_cols)) {
+    # First check if DT, then add constraints
+    if(inherits(query_dt, "data.table")) {
+      # Check if columns are equal
+      if(length(colnames(query_dt)) == length(expected_cols)) {
+        # Check if columns are same as expected
+        if(all.equal(target = expected_cols, current = colnames(query_dt))) {
+          return(TRUE)
+        } else {
+          pio::pioDisp(query_dt)
+          cli::cli_alert_danger(all.equal(target = expected_cols, current = colnames(query_dt)))
+          return(FALSE)
+        }
+        # Columns are not equal
+      } else if(length(colnames(query_dt)) > length(expected_cols)) {
+        extra_cols <- colnames(query_dt)[which(!colnames(query_dt) %in% expected_cols)]
+        pio::pioDisp(query_dt)
+        cli::cli_alert_danger("Input data.table object had more columns than expected - extra columns: {crayon::red({extra_cols})}")
+        return(FALSE)
+      } else if(length(colnames(query_dt)) < length(expected_cols)) {
+        missing_cols <- expected_cols[which(!expected_cols %in% colnames(query_dt))]
+        pio::pioDisp(query_dt)
+        cli::cli_alert_danger("Input data.table object had less columns than expected - missing columns: {crayon::red({missing_cols})}")
+        return(FALSE)
+      }
+    } else {
+      return(FALSE)
+    }
+  }
+}
 
+# TODO: add more intelligent setting of boundaries by storing the values of the
+#       chromosome arms and finding these boundaries for each chromosome and arm in a GR
+#' @name gr_flank
+#' @title Precise addition of flanking to GRanges with boundary-aware options
+#'
+#' @description
+#' Precise addition of flanks to the start and/or end of a GRanges object with the option
+#' of setting a boundary for the flanks, helpful to account for boundaries like chromosome arms.
+#'
+#' Note, the boundaries are compared directly to the new flanked start/end and do not currently
+#' take the chromosome into account automatically. Thus, this function is best applied in on
+#' per chromosome basis.
+#'
+#' If the flank exceeds the boundary, the new flanked start/end will set at the boundary.
+#'
+#' @param input_gr GRanges object to add flanks to
+#' @param start_flank Amount of flank (in bp) to be added to the start of the ranges, default:NULL
+#' @param end_flank Amount of flank (in bp) to be added to the end of the ranges, default:NULL
+#' @param start_flank_boundary The genomic coordinate the start of the flanked GRanges should
+#'  to not exceed, default: NULL
+#' @param end_flank_boundary The genomic coordinate the end of the flanked GRanges should
+#'  to not exceed, default: NULL
+#'
+#' @examples
+#' # Not a DT
+#' dt_sanitycheck(query_dt = kras_dnase_demo_gr_hg38)
+#' # Just a DT
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38)
+#' # DT with correct columns
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38, expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
+#' # DT with less columns than expected
+#' dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-3], expected_cols = c("seqnames","start","end","strand","signalValue","pValue"))
+#'
+#' @export
+gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {
+  # Check the input object. If data.table, continue on. If not, convert
+  if(gr_sanitycheck(query_gr = input_gr)) {
+    input_dt <- gUtils::gr2dt(input_gr)
+  } else if(dt_sanitycheck(query_dt = input_gr)) {
+    input_dt <- input_gr
+  }
 
+  # Check user has set one of the flank values
+  if(is.null(start_flank) & is.null(end_flank)) {
+    stop(cli::cli_alert_danger("Must set either {crayon::cyan('start_flank')} or {crayon::cyan('end_flank')} {crayon::white(clisymbols::symbol$ellipsis)}"))
+  }
 
+  # First, add the flank to the start of the DT obj to get the potential new loci value
+  # this can end up being a negative number
+  # Catch this behavior here and enforce a boundary if detected
+  flanked_start <- input_dt$start - start_flank
 
+  # If flanked start point is within the boundary
+  if(!is.null(start_flank_boundary) & flanked_start >= start_flank_boundary) {
+    new_start <- flanked_start
+
+  # if flanked start is outside the boundary, set the new start to this edge
+  } else if(!is.null(start_flank_boundary) & flanked_start < start_flank_boundary) {
+    new_start <- start_flank_boundary
+
+  # if boundary is not set, keep flanked start but must apply trim to keep on chromosome scale
+  } else if(is.null(start_flank_boundary)) {
+    new_start <- flanked_start
+  }
+
+  # Apply same process for the end of the GR obj
+  flanked_end <- input_dt$end + end_flank
+
+  # If flanked end point is within the boundary
+  if(!is.null(end_flank_boundary) & flanked_end <= end_flank_boundary) {
+    new_end <- flanked_end
+
+  # if flanked end is outside the boundary, set the new end to this edge
+  } else if(!is.null(end_flank_boundary) & flanked_end > end_flank_boundary) {
+    new_end <- end_flank_boundary
+
+  # if boundary is not set, keep flanked start but must apply trim to keep on chromosome scale
+  } else if(is.null(end_flank_boundary)) {
+    new_end <- flanked_end
+  }
+
+  # Now update the values
+  input_dt$start <- new_start
+  input_dt$end <- new_end
+
+  # Convert back to GR obj
+  # Apply the trim if unbound
+  if(is.null(start_flank_boundary) | is.null(end_flank_boundary)) {
+    flanked_gr <- GenomicRanges::trim(dt_to_gr(input_dt))
+  } else {
+    flanked_gr <- dt_to_gr(input_dt)
+  }
+  return(flanked_gr)
+}
 
 
 #' @name get_qc_diagnostics_alignment
@@ -1311,12 +1770,11 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, ran
 
 
 
-
-# }}}}------->>>
 #
-#  Reader functions
 #
-# }}}}------->>>
+# }}}}------->>> Reader functions
+#
+#
 
 #' @name read_gtf_file
 #' @title Read in a GTF file, such as one from Ensembl, and convert to GRanges object

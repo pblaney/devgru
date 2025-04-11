@@ -61,7 +61,6 @@
 #' @import ggpubr
 #' @import ggside
 #' @import stats
-#' @import DNAcopy
 #' @import crayon
 #' @import cli
 #' @import pio
@@ -82,6 +81,7 @@
 #' @importFrom ggfittext geom_bar_text
 #' @importFrom hms hms
 #' @importFrom utils packageVersion
+#' @importFrom DNAcopy CNA smooth.CNA segment
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -189,8 +189,9 @@ NULL
 #'
 #' A convenient single collection of the genomic span of each chromosome arm.
 #' The span is described as:
-#' p-arm         start |<-------->| centromere
-#' q-arm    centromere |<-------->| end
+#'                     |  ranges kept  |
+#' p-arm         start |<------------->| centromere
+#' q-arm    centromere |<------------->| end
 #'
 #' Note, this data does not include a range across the centromeres, for these
 #' see `exclusion_regions_hg38`.
@@ -201,6 +202,20 @@ NULL
 #' @format \code{GRanges}
 NULL
 
+#' dryclean-fragCounter read depth profile on hg38 as GRanges
+#'
+#' A slice of data from a `dryclean` adjusted `fragCounter` read depth profile
+#' of a tumor sample.
+#' The demo contains slices from chr19 and chr22.
+#'
+#' See `fragCounter` (https://github.com/mskilab-org/fragCounter)
+#' and `dryclean` (https://github.com/mskilab-org/dryclean)
+#'
+#' @name read_depth_demo_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
 
 #
 #
@@ -466,7 +481,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #'
 #' @description
 #' Single command to smartly convert a data.table object to a GRanges object by
-#' wrapping `gr_refactor_seqs` around the `gUtils::dt2gr()` to avoid seqinfo conflicts
+#' wrapping `gr_refactor_seqs()` around the `gUtils::dt2gr()` to avoid seqinfo conflicts
 #' and apply proper sorting.
 #'
 #' @param input_dt data.table object that minimally contains columns like chromosome start, and end position
@@ -656,6 +671,22 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #' @param end_flank_boundary The genomic coordinate the end of the flanked GRanges should
 #'  to not exceed, default: NULL
 #'
+#' @examples
+#' # The gene NOTCH2 is close to the p-arm centromere on chr1
+#' notch2 <- gUtils::parse.gr("chr1:119911553-120069662")
+#' notch2
+#' chr1_p_arm <- gUtils::`%Q%`(chromosome_arms_hg38, seqnames == "chr1" & arm == "p")
+#' chr1_p_arm
+#' GenomicRanges::end(chr1_p_arm)
+#'
+#' # If sampling data around this locus in a 3 Mb window, it's important to not
+#' # extend into/beyond the centromere so we need to set this boundary
+#' gr_flank(input_gr = notch2,
+#'          start_flank = 3e6,
+#'          end_flank = 3e6,
+#'          start_flank_boundary = GenomicRanges::start(chr1_p_arm),
+#'          end_flank_boundary = GenomicRanges::end(chr1_p_arm))
+#'
 #' @export
 gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {
   # Check the input object. If data.table, continue on. If not, convert
@@ -719,6 +750,94 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 }
 
 
+
+
+
+
+
+
+#
+#
+# }}}}------->>> Complex function workflows
+#
+#
+
+#' @name get_cbs_per_chromosome
+#' @title Single chromosome run circular binary segmentation (CBS) algorithm on read depth profile
+#'
+#' @description
+#' Run CBS algorithm using DNAcopy on a per-chromosome basis on read depth profile. This
+#' allows for parallel computation of the segmentation, rapidly reducing run time.
+#' There should be no `NA`s in the columns or `0`s in the `signal` column.
+#'
+#' Note, this function was designed to be run as part of the `get_dryclean_segmentation()`
+#' workflow. Also, see `chrompar()` for executing in parallel.
+#'
+#' @param chrom_for_cbs The chromosome to run CBS algorithm on
+#' @param chromosome_names A vector of chromosome strings, equivalent to the seqnames
+#'  column. Must contain at least the `chrom_for_cbs`
+#' @param signal A vector of read depth signal to be used as input, equivalent to
+#'  the foreground or read ratio column. These values will be `log`ged before use in CBS
+#' @param position A vector of the genomic position of the signal measurement, equivalent
+#'  to the start column
+#' @param sample_id A string used to populate the ID column in the data.table
+#'
+#' @examples
+#' # For this example, there are no NAs or zeros in the `signal`
+#' # Check for these and may need to filter them out
+#' read_depth_demo_hg38
+#'
+#' # Example of what the input looks like for
+#' # chromosome_names
+#' head(as.character(GenomicRanges::seqnames(read_depth_demo_hg38)))
+#' # signal
+#' head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "foreground"]))
+#' # position
+#' head(GenomicRanges::start(read_depth_demo_hg38))
+#'
+#' @export
+get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, position, sample_id) {
+  # Function CLI
+  cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_cbs})}}")
+
+  # Grab chromosome specific data for run the DNAcopy CBS workflow
+  idx_per_chrom <- which(chromosome_names == chrom_for_cbs)
+  log_signal_per_chrom <- log(signal)[idx_per_chrom]
+  chromosome_names_per_idx <- chromosome_names[idx_per_chrom]
+  position_per_chrom <- position[idx_per_chrom]
+
+  # Run DNAcopy CBS workflow
+  cna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
+                                chrom = chromosome_names_per_idx,
+                                maploc = position_per_chrom,
+                                data.type = 'logratio')
+
+  cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(cna_per_chrom),
+                                                 alpha = 1e-5,
+                                                 undo.splits = "sdundo",
+                                                 undo.SD = 3,
+                                                 verbose = FALSE)
+  cna_segmentation_per_chrom_dt <- data.table::as.data.table(cna_segmentation_per_chrom$output)
+  cna_segmentation_per_chrom_dt$ID <- sample_id
+
+  # Return output per-chromosome CBS DT
+  return(cna_segmentation_per_chrom_dt)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# TODO: NEED TO MAKE SURE THIS WORKS
 #' @name get_qc_diagnostics_alignment
 #' @title Generate diagnostic plots for alignment QC checks using Alfred summary files
 #'
@@ -980,6 +1099,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 }
 
 
+# TODO: NEED TO MAKE SURE THIS WORKS
 #' @name get_qc_diagnostics_snvindel
 #' @title Generate diagnostic plots for SNV & InDel variant calling QC checks
 #'

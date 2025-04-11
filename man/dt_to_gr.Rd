@@ -12,7 +12,7 @@ that describe the genomic coordinates of the range}
 }
 \description{
 Single command to smartly convert a data.table object to a GRanges object by
-wrapping \code{gr_refactor_seqs} around the \code{gUtils::dt2gr()} to avoid seqinfo conflicts
+wrapping \code{gr_refactor_seqs()} around the \code{gUtils::dt2gr()} to avoid seqinfo conflicts
 and apply proper sorting.
 }
 \examples{

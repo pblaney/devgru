@@ -10,8 +10,9 @@
 \description{
 A convenient single collection of the genomic span of each chromosome arm.
 The span is described as:
-p-arm         start |<-------->| centromere
-q-arm    centromere |<-------->| end
+|  ranges kept  |
+p-arm         start |<------------->| centromere
+q-arm    centromere |<------------->| end
 }
 \details{
 Note, this data does not include a range across the centromeres, for these

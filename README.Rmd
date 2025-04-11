@@ -6,38 +6,38 @@ output: github_document
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  echo = FALSE,
-  message = FALSE,
-  collapse = TRUE,
-  comment = "#>",
-  fig.path = "man/figures/README-",
-  out.width = "100%"
+    collapse = TRUE,
+    comment = "#>",
+    fig.path = "man/figures/README-",
+    out.width = "100%"
 )
 ```
 
 # devgru <img src="man/figures/devgruLogo.png" align="right" width="250" />
 
-
 <!-- badges: start -->
+[![GitHub issues](https://img.shields.io/github/issues/pblaney/devgru)](https://github.com/pblaney/devgru/issues)
+[![GitHub pulls](https://img.shields.io/github/issues-pr/pblaney/devgru)](https://github.com/pblaney/devgru/pulls)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
-
 
 A developmental `R` environment for 
 a suite of `GenomicRanges` utilities
 
 ### Installation
 
-You can install `devgru` with:
+You can install the current development version of `devgru` with:
 
-``` r
+```{r 'install_dev', eval = FALSE}
 devtools::install_github("pblaney/devgru")
+#BiocManager::install("pblaney/devgru")
 ```
 
 ### Suite of Packages
 
 The current suite of utilities for `devgru` can be quickly installed, if needed, and loaded with:
 
-``` r
+```{r 'kit_loadout', eval = FALSE}
 kit_loadout()
 ```
 
@@ -65,3 +65,14 @@ kit_loadout()
 * [`parallel`](https://stat.ethz.ch/R-manual/R-devel/library/parallel/doc/parallel.pdf)
 * [`doParallel`](https://cran.r-project.org/web/packages/doParallel/doParallel.pdf)
 * [`foreach`](https://cran.r-project.org/web/packages/foreach/vignettes/foreach.html)
+
+
+### Development tools
+
+* Continuous code testing is possible thanks to [GitHub actions](https://www.tidyverse.org/blog/2020/04/usethis-1-6-0/)  through `r BiocStyle::CRANpkg('usethis')`, `r BiocStyle::CRANpkg('remotes')`, and `r BiocStyle::CRANpkg('rcmdcheck')` customized to use [Bioconductor's docker containers](https://www.bioconductor.org/help/docker/) and `r BiocStyle::Biocpkg('BiocCheck')`.
+* Code coverage assessment is possible thanks to [codecov](https://codecov.io/gh) and `r BiocStyle::CRANpkg('covr')`.
+* The [documentation website](http://pblaney.github.io/devgru) is automatically updated thanks to `r BiocStyle::CRANpkg('pkgdown')`.
+* The code is styled automatically thanks to `r BiocStyle::CRANpkg('styler')`.
+* The documentation is formatted thanks to `r BiocStyle::CRANpkg('devtools')` and `r BiocStyle::CRANpkg('roxygen2')`.
+
+This package was developed using `r BiocStyle::Biocpkg('biocthis')`.

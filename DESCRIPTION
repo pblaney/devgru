@@ -1,14 +1,19 @@
 Package: devgru
 Title: Developmental environment for GenomicRanges utilities
-Version: 0.0.0.9000
+Version: 0.99.0
+Date: 2025-04-11
 Authors@R: 
     person("Patrick", "Blaney", email = "patrick.blaney@nyulangone.org", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-9319-8866"))
 Description: A packaged-up environment in R specifically for various utilities that are built on GenomicRanges framework.
 License: MIT + file LICENSE
 Encoding: UTF-8
+LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+URL: https://github.com/pblaney/devgru
+BugReports: https://github.com/pblaney/devgru/issues
+biocViews: Software, BiomedicalInformatics
 Depends: 
     R (>= 4.1.0)
 Imports: 
@@ -49,4 +54,3 @@ Imports:
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook
-LazyData: true

@@ -35,3 +35,20 @@ per chromosome basis.
 
 If the flank exceeds the boundary, the new flanked start/end will set at the boundary.
 }
+\examples{
+# The gene NOTCH2 is close to the p-arm centromere on chr1
+notch2 <- gUtils::parse.gr("chr1:119911553-120069662")
+notch2
+chr1_p_arm <- gUtils::`\%Q\%`(chromosome_arms_hg38, seqnames == "chr1" & arm == "p")
+chr1_p_arm
+GenomicRanges::end(chr1_p_arm)
+
+# If sampling data around this locus in a 3 Mb window, it's important to not
+# extend into/beyond the centromere so we need to set this boundary
+gr_flank(input_gr = notch2,
+         start_flank = 3e6,
+         end_flank = 3e6,
+         start_flank_boundary = GenomicRanges::start(chr1_p_arm),
+         end_flank_boundary = GenomicRanges::end(chr1_p_arm))
+
+}

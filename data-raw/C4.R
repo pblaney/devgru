@@ -37,7 +37,6 @@ example_dnase_hg38 <- rtracklayer::liftOver(x = gUtils::gr.chr(gUtils::example_d
 example_dnase_hg38 <- gUtils::grl.unlist(example_dnase_hg38)
 # Clean-up footprint of example
 example_dnase_hg38 <- example_dnase_hg38[,1:2]
-
 # Export for usage
 usethis::use_data(example_dnase_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -55,7 +54,7 @@ kras_dnase_demo_gr_hg19 <- kras_dnase_demo_gr_hg19[,3:6]
 # And complete the remaining seqinfo columns for genome and isCircular
 GenomeInfoDb::genome(kras_dnase_demo_gr_hg19) <- "GRCh37"
 GenomeInfoDb::isCircular(kras_dnase_demo_gr_hg19) <- rep(FALSE,25)
-
+# Export for usage
 usethis::use_data(kras_dnase_demo_gr_hg19, internal = FALSE, overwrite = TRUE)
 
 # hg38
@@ -68,7 +67,6 @@ kras_dnase_demo_gr_hg38$gene <- "KRAS"
 # Clean-up footprint of example and seqinfo
 kras_dnase_demo_gr_hg38 <- kras_dnase_demo_gr_hg38[,3:6]
 kras_dnase_demo_gr_hg38 <- gr_refactor_seqs(kras_dnase_demo_gr_hg38)
-
 # Export for usage
 usethis::use_data(kras_dnase_demo_gr_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -85,10 +83,8 @@ braf_dnase_demo_dt_hg19 <- gUtils::gr.findoverlaps(query = gUtils::example_dnase
 # Add gene name and biospecimen column
 braf_dnase_demo_dt_hg19$biospecimen <- "K562"
 braf_dnase_demo_dt_hg19$gene <- "KRAS"
-
 # Export for usage
 usethis::use_data(braf_dnase_demo_dt_hg19, internal = FALSE, overwrite = TRUE)
-
 
 # hg38
 braf_dnase_demo_dt_hg38 <- gUtils::gr.findoverlaps(query = example_dnase_hg38,
@@ -99,7 +95,6 @@ braf_dnase_demo_dt_hg38 <- gUtils::gr.findoverlaps(query = example_dnase_hg38,
 # Add gene name and biospecimen column
 braf_dnase_demo_dt_hg38$biospecimen <- "K562"
 braf_dnase_demo_dt_hg38$gene <- "KRAS"
-
 # Export for usage
 usethis::use_data(braf_dnase_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -157,7 +152,6 @@ usethis::use_data(braf_dnase_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 # Don't rerun the code snippet but simply load the data here
 exclusion_regions_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "exclusion_regions.hg38.bed", package = "devgru"),
                                    has_header = T)
-
 # Export for usage
 usethis::use_data(exclusion_regions_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -170,11 +164,43 @@ usethis::use_data(exclusion_regions_hg38, internal = FALSE, overwrite = TRUE)
 # Don't rerun the code snippet but simply load the data here
 chromosome_arms_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "chromosome_arms.hg38.bed", package = "devgru"),
                                  has_header = T)
-
 # Export for usage
 usethis::use_data(chromosome_arms_hg38, internal = FALSE, overwrite = TRUE)
 
-#usethis::use_data(example_dnase_hg38,
-#                  kras_dnase_demo_gr_hg19, kras_dnase_demo_gr_hg38,
-#                  braf_dnase_demo_dt_hg19, braf_dnase_demo_dt_hg38,
-#                  internal = TRUE, compress = "xz", overwrite = TRUE)
+#
+#
+# }}}}------->>> dryclean-fragCounter read depth profile demo
+#
+#
+
+# # Read in dryclean-fragCounter read depth profile
+# dryclean_fragcounter_cbs_demo <- readRDS(file = "~/morganLab/mgp1000/development/jAbBa/01-076_B_S10_001.dryclean.fragcounter.cov.rds")
+# # Extract a subset of data from chr19
+# read_depth_demo_chr19 <- gUtils::gr.findoverlaps(query = dryclean_fragcounter_cbs_demo,
+#                                                  subject = gUtils::parse.gr("chr19:23000000-25000000"),
+#                                                  qcol = c("background.log","foreground.log","input.read.counts",
+#                                                           "median.chr","foreground","background","log.reads",
+#                                                           "germline.status"),
+#                                                  return.type = "data.table") %>%
+#   dplyr::select(seqnames,start,end,background.log,foreground.log,
+#                 input.read.counts,median.chr,foreground,background,
+#                 log.reads,germline.status)
+# # Extract a subset of data from chr22
+# read_depth_demo_chr22 <- gUtils::gr.findoverlaps(query = dryclean_fragcounter_cbs_demo,
+#                                                  subject = gUtils::parse.gr("chr21:23000000-25000000"),
+#                                                  qcol = c("background.log","foreground.log","input.read.counts",
+#                                                           "median.chr","foreground","background","log.reads",
+#                                                           "germline.status"),
+#                                                  return.type = "data.table") %>%
+#   dplyr::select(seqnames,start,end,background.log,foreground.log,
+#                 input.read.counts,median.chr,foreground,background,
+#                 log.reads,germline.status)
+# # Combine the chr19 and chr22 data for parallel demo as well
+# read_depth_demo_hg38 <- gUtils::rrbind(read_depth_demo_chr19,
+#                                        read_depth_demo_chr22)
+
+# Don't rerun the code snippet but simply load the data here
+read_depth_demo_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "read_depth_profile.hg38.bed", package = "devgru"),
+                                      has_header = T)
+# Export for usage
+usethis::use_data(read_depth_demo_hg38, internal = FALSE, overwrite = TRUE)

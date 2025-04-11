@@ -1,0 +1,29 @@
+pkgVer <- function(pkg) {
+    if (!exists("meta") || is.null(meta)) meta <- packageDescription(pkg)
+    ver <- meta$Version
+    paste0('https://github.com/pblaney/devgru/', pkg, ' - R package version ', ver)
+}
+
+c(
+
+    bibentry(bibtype="manual",
+        title = "devgru: Developmental environment for GenomicRanges utilities",
+        author = personList(
+            as.person("Patrick Blaney")
+        ),
+        year = format(Sys.Date(), "%Y"),
+        url = "https://github.com/pblaney/devgru",
+        note = pkgVer('devgru'),
+        doi = '10.18129/B9.bioc.devgru'
+    ),
+    bibentry(bibtype="article",
+        title = "devgru: Developmental environment for GenomicRanges utilities",
+        author = personList(
+            as.person("Patrick Blaney")
+        ),
+        year = format(Sys.Date(), "%Y"),
+        journal = "bioRxiv",
+        doi = "10.1101/TODO",
+        url = "https://www.biorxiv.org/content/10.1101/TODO"
+    )
+)

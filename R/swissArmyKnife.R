@@ -68,6 +68,7 @@
 #' @import fgsea
 
 #' @importFrom pak pkg_install
+#' @importFrom librarian shelf
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
 #' @importFrom rtracklayer import
 #' @importFrom readr read_delim
@@ -472,7 +473,10 @@ kit_loadout <- function(update_kit = F) {
   paint::paint(gr_core_pkgs)
   paint::paint(util_core_pkgs)
   # Load the packages with librarian
-  pak::pkg_install(pkg = loadout, upgrade = update_kit)
+  if(update_kit) {
+    pak::pkg_install(pkg = loadout, upgrade = update_kit)
+  }
+  librarian::shelf(loadout, update_all = F, quiet = T)
   cat("\n")
   cli_stopwatch_end(function_name = "kit_loadout",
                     stopwatch_start = process_start)

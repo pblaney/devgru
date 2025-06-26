@@ -61,7 +61,8 @@ Imports:
     tidyr,
     BiocParallel,
     easypar,
-    gtools
+    gtools,
+    librarian
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

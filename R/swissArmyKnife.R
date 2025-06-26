@@ -104,7 +104,7 @@ alignment_group=fraction=med_reads=median_count=tumor_normal=ALT=CALLER=REF=SAMP
 total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=NULL
 FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=gene_body_hg38=gene_id=condition=expr_mean=NULL
 normalized_per_gene_mean_expr=filtered_vs_survived=group_means=rn=gene=log2_fc=neg_log10_p_adj=NULL
-p_val_adj=point_label=rank_score=ES=NULL
+p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -2981,6 +2981,72 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
 # }}}}------->>> Geoms
 #
 #
+
+#' @name geom_gap_imputation
+#' @title Diagnostic plot used for reviewing the imputation of gaps in segmentation
+#'
+#' @description
+#' Creates a simple ggpplot2 style plot for quickly reviewing how the imputation of
+#' each gap identified in a segmentation file
+#'
+#' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
+#' workflow.
+#'
+#' @param original_gap GenomicRanges object of gap
+#' @param imputed_gap_gr GenomicRanges object of imputed values across gap
+#' @param sv_bp GenomicRanges object of structural variant breakpoint that falls within
+#'  the original gap, default: NULL
+#'
+#' @examples
+#' # Snippet from within the function `` that calls this geom
+#' # geom_gap_imputation_diagnostic(
+#' # original_gap = gap_of_interest,
+#' # imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps),
+#' # sv_bp = goi_sv_bp_overlap)
+#'
+#' @returns ggplot object
+#' @export
+geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
+  # Convert the input GR to a DT
+  imputed_gap_dt <- gUtils::gr2dt(imputed_gap_gr)
+
+  # Build the plot starting with points for the segments
+  diagnostic_plot <- ggplot2::ggplot(data = imputed_gap_dt) +
+    ggplot2::geom_point(aes(x = end, y = seg.mean, color = tile_type), size = 3) +
+    ggplot2::scale_color_manual(name = NULL, values = paletteer::paletteer_d("ggthemr::pale")) +
+    ggplot2::geom_step(aes(x = end, y = seg.mean), color = "cyan", linewidth = 1.5) +
+    ggplot2::labs(title = paste0("Gap at ", gUtils::gr.string(original_gap), " (", GenomicRanges::width(original_gap), " bp)"),
+                  x = paste0(stringr::str_to_title(as.character(GenomeInfoDb::seqnames(original_gap)@values)), " genomic position"),
+                  y = "Seg. Mean") +
+    ggplot2::theme(panel.background = element_blank(),
+                   panel.border = element_rect(fill = "transparent"),
+                   panel.grid.major.x = element_blank(),
+                   panel.grid.major.y = element_line(color = "gray40", linetype = "dotted"),
+                   panel.grid.minor.x = element_blank(),
+                   panel.grid.minor.y = element_blank(),
+                   legend.position = "inside",
+                   legend.position.inside = c(0.20,0.80),
+                   legend.text = element_text(size = 9),
+                   legend.background = element_rect(fill = alpha("gray80", alpha = 0.8)),
+                   title = element_text(size = 11),
+                   axis.text = element_text(size = 10),
+                   axis.title = element_text(size = 11))
+
+  # Add marker to show where the SV BP is
+  if(!is.null(sv_bp)) {
+    diagnostic_plot <- diagnostic_plot +
+      ggplot2::annotate(geom = "point",
+                        x = GenomicRanges::start(sv_bp),
+                        y =  min(imputed_gap_dt$seg.mean),
+                        color = "tan2",
+                        size = 4.5,
+                        shape = 17,
+                        alpha = 0.8)
+  }
+  # Return the final plot
+  return(diagnostic_plot)
+}
+
 
 #' @name geom_deseq2_volcano
 #' @title Volcano plot for exploring results from DESeq2 differential gene expression analysis

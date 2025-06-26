@@ -50,7 +50,18 @@ Imports:
     pak,
     crayon,
     pio,
-    hms
+    hms,
+    DESeq2,
+    fs,
+    ggpie,
+    tibble,
+    ggrepel,
+    SummarizedExperiment,
+    fgsea,
+    tidyr,
+    BiocParallel,
+    easypar,
+    gtools
 Remotes:
     github::mskilab-org/gUtils,
     github::mskilab-org/fishHook

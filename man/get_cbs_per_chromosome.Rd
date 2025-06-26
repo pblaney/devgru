@@ -26,6 +26,9 @@ to the start column}
 
 \item{sample_id}{A string used to populate the ID column in the data.table}
 }
+\value{
+data.table of CBS segmentation values per chromosome
+}
 \description{
 Run CBS algorithm using DNAcopy on a per-chromosome basis on read depth profile. This
 allows for parallel computation of the segmentation, rapidly reducing run time.

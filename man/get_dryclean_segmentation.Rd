@@ -6,16 +6,25 @@
 \usage{
 get_dryclean_segmentation(
   path_to_dryclean_profile,
-  threads = 1,
-  random_seed = 999
+  cpus = 1,
+  random_seed = 999,
+  verbose = T,
+  exp_colnames = c("background.log", "foreground.log", "input.read.counts", "median.chr",
+    "foreground", "background", "log.reads", "germline.status")
 )
 }
 \arguments{
-\item{path_to_dryclean_profile}{Path to dryclean fragCounter read depth profile}
+\item{path_to_dryclean_profile}{Path to dryclean fragCounter read depth profile, .rds file
+output obtained directly from \code{dryclean} run}
 
-\item{threads}{Number of threads to use for parallel execution, default: 1}
+\item{cpus}{Number of CPUs to use for parallel execution, default: 1}
 
-\item{random_seed}{Numeric value to use as random seed for consistent execution}
+\item{random_seed}{Numeric value to use as random seed for consistent results}
+
+\item{verbose}{Output CLI during workflow, default: TRUE}
+
+\item{exp_colnames}{Expected column names for dryclean fragCounter read depth profile
+input data.table}
 }
 \value{
 data.table object with required GISTIC2.0 columns
@@ -23,4 +32,14 @@ data.table object with required GISTIC2.0 columns
 \description{
 Given dryclean processed fragCounter read depth profile, run DNAcopy's CBS algorithm
 in a parallel manner to produce a segmentation file that is compatible with GISTIC2.0.
+}
+\examples{
+# Demo dryclean fragCounter read depth profile
+read_depth_demo_hg38
+
+# Execute the full workflow
+# dryclean_seg <- get_dryclean_segmentation(
+# path_to_dryclean_profile = "read_depth_demo_hg38.rds",
+# cpus = 4)
+
 }

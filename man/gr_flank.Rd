@@ -15,15 +15,18 @@ gr_flank(
 \arguments{
 \item{input_gr}{GRanges object to add flanks to}
 
-\item{start_flank}{Amount of flank (in bp) to be added to the start of the ranges, default:NULL}
+\item{start_flank}{Amount of flank (in bp) to be added to the start of the ranges, default: NULL}
 
-\item{end_flank}{Amount of flank (in bp) to be added to the end of the ranges, default:NULL}
+\item{end_flank}{Amount of flank (in bp) to be added to the end of the ranges, default: NULL}
 
 \item{start_flank_boundary}{The genomic coordinate the start of the flanked GRanges should
 to not exceed, default: NULL}
 
 \item{end_flank_boundary}{The genomic coordinate the end of the flanked GRanges should
 to not exceed, default: NULL}
+}
+\value{
+GenomicRanges object with updated start/end coordinates
 }
 \description{
 Precise addition of flanks to the start and/or end of a GRanges object with the option

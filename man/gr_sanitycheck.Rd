@@ -12,6 +12,9 @@ gr_sanitycheck(query_gr, expected_cols = NULL)
 \item{expected_cols}{Vector of character strings to check for consistency in
 columns of query GRanges, default: NULL}
 }
+\value{
+TRUE or FALSE
+}
 \description{
 Simple check if the input is a GRanges object, plus includes an additional functionality
 to perform a smart, transparent sanity check of expected column names.

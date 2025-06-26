@@ -10,6 +10,9 @@ dt_to_gr(input_dt)
 \item{input_dt}{data.table object that minimally contains columns like chromosome start, and end position
 that describe the genomic coordinates of the range}
 }
+\value{
+GenomicRanges object with input columns and updated seqinfo, seqnames, seqlengths, seqlevels
+}
 \description{
 Single command to smartly convert a data.table object to a GRanges object by
 wrapping \code{gr_refactor_seqs()} around the \code{gUtils::dt2gr()} to avoid seqinfo conflicts

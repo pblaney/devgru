@@ -11,6 +11,9 @@ cli_stopwatch_start(package = "devgru", function_name)
 
 \item{function_name}{What is the function name}
 }
+\value{
+CLI message and start time of process run
+}
 \description{
 Display to the user the workflow has begun, the function that launched it, and
 start the stopwatch to track execution time,

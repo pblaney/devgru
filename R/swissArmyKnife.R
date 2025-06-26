@@ -64,6 +64,8 @@
 #' @import crayon
 #' @import cli
 #' @import pio
+#' @import DESeq2
+#' @import fgsea
 
 #' @importFrom pak pkg_install
 #' @importFrom BSgenome.Hsapiens.UCSC.hg38 Hsapiens
@@ -81,7 +83,16 @@
 #' @importFrom ggfittext geom_bar_text
 #' @importFrom hms hms
 #' @importFrom utils packageVersion
+#' @importFrom fs path_package
+#' @importFrom ggpie ggpie
+#' @importFrom tibble column_to_rownames
 #' @importFrom DNAcopy CNA smooth.CNA segment
+#' @importFrom SummarizedExperiment colData
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom tidyr drop_na
+#' @importFrom BiocParallel MulticoreParam
+#' @importFrom easypar run
+#' @importFrom gtools mixedsort
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -90,7 +101,9 @@ x=DeletionRate=FractionCovered=InsertionRate=Mapped=MappedForwardFraction=Mapped
 MappedReverseFraction=MedianCoverage=MedianInsertSize=Sample=alignment_group=fraction=med_reads=NULL
 alignment_group=fraction=med_reads=median_count=tumor_normal=ALT=CALLER=REF=SAMPLE=total_indels=NULL
 total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=NULL
-FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=NULL
+FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=gene_body_hg38=gene_id=condition=expr_mean=NULL
+normalized_per_gene_mean_expr=filtered_vs_survived=group_means=rn=gene=log2_fc=neg_log10_p_adj=NULL
+p_val_adj=point_label=rank_score=ES=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -217,6 +230,59 @@ NULL
 #' @format \code{GRanges}
 NULL
 
+#' Gene body segments from Ensemble v108 on hg38 as GRanges
+#'
+#' This genomic ranges contains the gene body segments (UTRs, Exons, Introns)
+#' for a single-transcript representation of Ensembl v108 genes on hg38.
+#'
+#'                          |  gene body schematic  |
+#' [5` prime UTR]{Exon}<---Intron--->{Exon}<---Intron--->{Exon}[3` prime UTR]
+#'
+#' The genes included had the following `gene_biotype`:
+#' protein_coding
+#' IG_C_gene,IG_D_gene,IG_J_gene,IG_V_gene,
+#' TR_C_gene,TR_D_gene,TR_J_gene,TR_V_gene
+#' lncRNA,miRNA
+#'
+#' The transcript for protein-coding genes were determined using MANE Select &
+#' MANE Plus Clinical v1.4 annotations
+#'
+#' Built from
+#' * Ensembl v108 GTF (https://ftp.ensembl.org/pub/release-108/gtf/homo_sapiens/Homo_sapiens.GRCh38.108.gtf.gz)
+#' * MANE v1.4 summary file (https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.4/MANE.GRCh38.v1.4.summary.txt.gz)
+#'
+#' @name gene_body_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GRanges}
+NULL
+
+#' RNA-seq counts matrix on hg38 as data.table
+#'
+#' Bulk RNA-seq data from RPMI-8226 and U-266 human myeloma cell lines that have
+#' been processed to transcript counts matrix.
+#' There are 3 replicates of each HMCL for use in DESeq2 differential gene
+#' expression analysis.
+#'
+#' @name hmcl_counts_demo_dt_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{data.table}
+NULL
+
+#' Condition labels for associated RNA-seq counts matrix as data.table
+#'
+#' Simple labels for RPMI-8226 and U-266 human myeloma cell lines that have
+#' been processed to transcript counts matrix.
+#'
+#' @name hmcl_conditions_demo_dt_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{data.table}
+NULL
+
+
+
 #
 #
 # }}}}------->>> CLI for talking the user through the package
@@ -256,6 +322,7 @@ cli_pio_colorscheme <- function () {
 #' process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
 #' process_start
 #'
+#' @returns CLI message and start time of process run
 #' @export
 cli_stopwatch_start <- function(package = "devgru", function_name) {
   # Time stamp start
@@ -407,8 +474,8 @@ kit_loadout <- function(update_kit = F) {
   # Load the packages with librarian
   pak::pkg_install(pkg = loadout, upgrade = update_kit)
   cat("\n")
-  process_end <- cli_stopwatch_end(function_name = "kit_loadout",
-                                   stopwatch_start = process_start)
+  cli_stopwatch_end(function_name = "kit_loadout",
+                    stopwatch_start = process_start)
 }
 
 #
@@ -441,7 +508,7 @@ kit_loadout <- function(update_kit = F) {
 #' # Use gr_refactor_seqs to fix the inconsistencies
 #' GenomeInfoDb::seqinfo(gr_refactor_seqs(example_dnase_hg38))
 #'
-#' @return GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   # First, make sure we match input GR 'chr' notation with the desired seqs
@@ -504,6 +571,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #' # However the seqinfo will conflict with other hg38 GRanges
 #' GenomeInfoDb::seqinfo(gUtils::dt2gr(braf_dnase_demo_dt_hg38))
 #'
+#' @returns GenomicRanges object with input columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 dt_to_gr <- function(input_dt) {
   # Wrap the dt2gr function with the gr_refactor_seqs function
@@ -535,6 +603,7 @@ dt_to_gr <- function(input_dt) {
 #' gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3],
 #'                expected_cols = c("signalValue","pValue","biospecimen","gene"))
 #'
+#' @returns TRUE or FALSE
 #' @export
 gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
   # Generic check if query is a GR obj
@@ -604,6 +673,7 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
 #'                expected_cols = c("seqnames","start","end","strand","signalValue",
 #'                                  "pValue","biospecimen","gene"))
 #'
+#' @returns TRUE or FALSE
 #' @export
 dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
   # Generic check if query is a DT obj
@@ -664,8 +734,8 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #' If the flank exceeds the boundary, the new flanked start/end will set at the boundary.
 #'
 #' @param input_gr GRanges object to add flanks to
-#' @param start_flank Amount of flank (in bp) to be added to the start of the ranges, default:NULL
-#' @param end_flank Amount of flank (in bp) to be added to the end of the ranges, default:NULL
+#' @param start_flank Amount of flank (in bp) to be added to the start of the ranges, default: NULL
+#' @param end_flank Amount of flank (in bp) to be added to the end of the ranges, default: NULL
 #' @param start_flank_boundary The genomic coordinate the start of the flanked GRanges should
 #'  to not exceed, default: NULL
 #' @param end_flank_boundary The genomic coordinate the end of the flanked GRanges should
@@ -687,6 +757,7 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #'          start_flank_boundary = GenomicRanges::start(chr1_p_arm),
 #'          end_flank_boundary = GenomicRanges::end(chr1_p_arm))
 #'
+#' @returns GenomicRanges object with updated start/end coordinates
 #' @export
 gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {
   # Check the input object. If data.table, continue on. If not, convert
@@ -762,6 +833,85 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #
 #
 
+#' @name chrompar
+#' @title Scaffold function around `easypar` to run workflows in parallel by chromosome
+#'
+#' @description
+#' A scaffold function to be used within other complex workflow functions that provides
+#' easy API to `easypar` functionality and executes a function in parallel by chromosome
+#'
+#' The scaffold takes a function where the input can be subset by chromosome and the
+#' expected output is either a data.table or GenomicRanges object
+#'
+#' @param par_function The function that will be executed in parallel by chromosome, written
+#'  as the function name without the `()` a the end
+#' @param par_chromosomes The set of chromosomes to execute in parallel, non-duplicated values
+#'  and can be any chromosomes as long as present in input data
+#' @param ... The input parameters that will be passed to `par_function` for execution, these
+#'  must be provided in the order expected by `par_function`
+#' @param run_in_par Run the jobs in parallel and not sequentially, default: TRUE
+#' @param par_cpus Number of CPUs to use for parallel execution, `easypar` will safeguard against using
+#'  all available CPUs
+#' @param par_packages Vector of character strings designating special packages needed for
+#'  executing the `par_function`
+#'
+#' @examples
+#' # Run as part of the `get_dryclean_segmentation()` workflow using
+#' # `get_cbs_per_chromosome()` as the par_function
+#' # final_cbs_segmentation <- chrompar(
+#' # par_function = get_cbs_per_chromosome,
+#' # par_chromosomes = chrom_iter_list,
+#' # par_cpus = threads,
+#' # seqnames_nona, foreground_cov_nona, start_nona, sample_id)
+#'
+#' # Run as part of the `get_segmentation_gap_imputation()` workflow using
+#' # `get_imputed_gaps_per_chromosome()` as the par_function
+#' # final_imputed_gaps <- chrompar(
+#' # par_function = get_imputed_gaps_per_chromosome,
+#' # par_chromosomes = chrom_iter_list,
+#' # par_cpus = threads,
+#' # par_packages = c("gUtils"),
+#' # dryclean_segmentation_whitelist_gapless, gaps_to_impute, threshold_for_imputation,
+#' # sbv_bps, sample_id, make_plots, path_for_plots)
+#'
+#' @returns GenomicRanges object with properly sorted genomic coordinates
+#' @export
+chrompar <- function(par_function, par_chromosomes, ..., run_in_par = T, par_cpus = NULL, par_packages = NULL) {
+  # Function CLI
+  cli::cli_alert_info(text = "Launching {.emph {.pkg {as.character(substitute(par_function))}()}} in parallel using chromosomes {crayon::white(clisymbols::symbol$ellipsis)}")
+  cat("\n")
+  cli::cli_text("****************")
+  cli::cli_ul(par_chromosomes, .close = T)
+  cli::cli_text("****************")
+  cat("\n")
+
+  # Build the parameters for the parallel run
+  # Add the chromosome to each set of inputs provided
+  par_params <- list()
+  for(i in 1:length(par_chromosomes)) {
+    par_params[[i]] <- c(par_chromosomes[i], list(...))
+  }
+
+  # Set the cores to user defined limit otherwise keep ratio
+  if(!is.null(par_cpus)) {
+    par_cores_ratio <- par_cpus / parallel::detectCores()
+  } else {
+    par_cores_ratio <- 0.8
+  }
+
+  # Run easypar by chromosome
+  par_out_list <- easypar::run(FUN = par_function, PARAMS = par_params, parallel = run_in_par, cores.ratio = par_cores_ratio,
+                               outfile = NULL, progress_bar = F, silent = F, packages = par_packages, filter_errors = F)
+
+  # Combine the output as sorted GR object
+  cat("\n")
+  cli::cli_alert_success("Parallel jobs completed. Merging per chromosome output and sorting {crayon::white(clisymbols::symbol$ellipsis)}")
+  par_out <- data.table::rbindlist(par_out_list)
+  par_out_gr <- dt_to_gr(par_out)
+
+  return(par_out_gr)
+}
+
 #' @name get_cbs_per_chromosome
 #' @title Single chromosome run circular binary segmentation (CBS) algorithm on read depth profile
 #'
@@ -795,6 +945,7 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #' # position
 #' head(GenomicRanges::start(read_depth_demo_hg38))
 #'
+#' @returns data.table of CBS segmentation values per chromosome
 #' @export
 get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, position, sample_id) {
   # Function CLI
@@ -824,9 +975,506 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
   return(cna_segmentation_per_chrom_dt)
 }
 
+#' @name get_dryclean_segmentation
+#' @title Generate a segmentation file from a dryclean fragCounter read depth profile
+#'
+#' @description
+#' Given dryclean processed fragCounter read depth profile, run DNAcopy's CBS algorithm
+#' in a parallel manner to produce a segmentation file that is compatible with GISTIC2.0.
+#'
+#' @param path_to_dryclean_profile Path to dryclean fragCounter read depth profile, .rds file
+#'  output obtained directly from `dryclean` run
+#' @param cpus Number of CPUs to use for parallel execution, default: 1
+#' @param random_seed Numeric value to use as random seed for consistent results
+#' @param verbose Output CLI during workflow, default: TRUE
+#' @param exp_colnames Expected column names for dryclean fragCounter read depth profile
+#'  input data.table
+#'
+#' @examples
+#' # Demo dryclean fragCounter read depth profile
+#' read_depth_demo_hg38
+#'
+#' # Execute the full workflow
+#' # dryclean_seg <- get_dryclean_segmentation(
+#' # path_to_dryclean_profile = "read_depth_demo_hg38.rds",
+#' # cpus = 4)
+#'
+#' @returns data.table object with required GISTIC2.0 columns
+#' @export
+get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random_seed = 999, verbose = T,
+                                      exp_colnames = c("background.log","foreground.log","input.read.counts",
+                                                       "median.chr","foreground","background","log.reads",
+                                                       "germline.status")) {
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_dryclean_segmentation",
+                       path_to_dryclean_profile, cpus, random_seed, exp_colnames)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_dryclean_segmentation")
+
+  # Read in dryclean fragCounter coverage
+  cli::cli_alert_info("Reading {.file {path_to_dryclean_profile}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_profile, pattern = "\\..*dryclean.*rds"))
+  dryclean_frag_cov <- readRDS(file = path_to_dryclean_profile)
+  # Check if input if dryclean GR obj
+  if(gr_sanitycheck(query_gr = dryclean_frag_cov, expected_cols = exp_colnames)) {
+    cli::cli_alert_success("Success")
+  } else {
+    stop(cli::cli_alert_danger("Check input"))
+  }
+
+  # Grab the drycleaned fragCounter foreground read coverage values
+  foreground_cov <- as.double(GenomicRanges::values(dryclean_frag_cov)[, "foreground"])
+
+  # Add very small constant value to move zero values to non-zero values before segmentation
+  zero_idx <- which(foreground_cov == 0)
+  if(length(zero_idx) > 0) {
+    small_const <- .Machine$double.eps
+    foreground_cov <- foreground_cov + small_const
+    cli::cli_alert_info("{crayon::cyan(length(zero_idx))} coverage data points have zero value, adding small constant value {crayon::cyan(small_const)} to prevent log error")
+  }
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Circular Binary Segmentation (CBS) with DNAcopy v", utils::packageVersion("DNAcopy")))
+  cat("\n")
+
+  # Grab index of all non-NA drycleaned foreground read covearge
+  idx <- which(!is.na(foreground_cov))
+  foreground_cov_nona <- foreground_cov[idx]
+  seqnames_nona <- as.character(GenomicRanges::seqnames(dryclean_frag_cov))[idx]
+  start_nona <- GenomicRanges::start(dryclean_frag_cov)[idx]
+  chrom_iter_list <- gtools::mixedsort(unique(seqnames_nona))
+
+  # Parallel execution of CBS per chromosome and merging to single DT object
+  final_cbs_segmentation <- chrompar(par_function = get_cbs_per_chromosome, par_chromosomes = chrom_iter_list, par_threads = cpus,
+                                     seqnames_nona, foreground_cov_nona, start_nona, sample_id)
+
+  # Return the DT of CBS output for easy downstream use
+  cli::cli_alert_success("Segmentation finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_dryclean_segmentation",
+                    stopwatch_start = process_start)
+  return(final_cbs_segmentation)
+}
 
 
 
+
+
+
+
+
+
+#' @name get_deseq2_diff_expr
+#' @title Run DESeq2 differential expression analysis on RNA-seq count data
+#'
+#' @description
+#' Run the DESeq2 differential gene expression analysis workflow from input file
+#' counts matrix and conditional labels.
+#'
+#' The workflow will read in standard output count matrix from `featureCounts`,
+#' run DGE analysis between the two conditions provided in the formula string and
+#' conditions label file.
+#'
+#' The counts matrix should contain a column with either the gene symbols (i.e. HUGO)
+#' or Ensembl IDs (i.e. ENSG###). The final output gene set will be mapped to Ensembl
+#' v108. See `gene_body_hg38` for more info.
+#'
+#' The `formula_string` should be a character string of the desired comparison in
+#' standard `y ~ x` format. Both `x` and `y` should be present in the conditions
+#' label file. This formula also handle covariates which should be included before
+#' `x`. For example, `y ~ age - BMI + x`. The covariates should also be present in
+#' the conditions label file as separate columns.
+#'
+#' The counts will be filtered to remove genes with little to no expression across
+#' all samples using a minimum threshold for mean expression of a gene. This filter
+#' can be deactivated by setting `min_transcripts = 0`. The results of this applied
+#' filter will be captured in QC plots.
+#'
+#' The final output will be a list that includes: the full DESeq2 object, a quilt
+#' plot of QC diagnostics after filtering, the DGE results as a tidy data.table,
+#' and a transcripts per million (TPM) counts data.table.
+#'
+#' @param counts_file_path Path to the counts matrix file
+#' @param condition_file_path Path to the conditions file
+#' @param gene_universe GenomicRanges object with genes to include for DGE analysis, default: `gene_body_hg38`
+#' @param gene_symbol_column The column name that contains HUGO gene symbols
+#' @param ensembl_id_column The column name that contains Ensembl gene IDs
+#' @param formula_string A character string of the formula of desired comparison
+#' @param min_transcripts The minimum threshold for mean transcript counts per gene, default: 10
+#' @param verbose Output CLI during workflow, default: TRUE
+#'
+#' @examples
+#' # dge_demo <- get_deseq2_diff_expr(
+#' # counts_file_path = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"),
+#' # condition_file_path = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"),
+#' # gene_universe = gene_body_hg38,
+#' # gene_symbol_column = "#GENE",
+#' # ensembl_id_column = NULL,
+#' # formula_string = "U266 ~ RPMI8226",
+#' # min_transcripts = 10)
+#'
+#' # Look at the output
+#' # Full DESeq2 object
+#' # dge_demo$deseq2_obj
+#'
+#' # Diagnostic plots after simple filtering
+#' # dge_demo$diagnostic_plots
+#'
+#' # DGE results as DT
+#' # dge_demo$deseq2_results_dt
+#'
+#' # Per gene TPM as DT
+#' # dge_demo$deseq2_tpm_dt
+#'
+#' @returns List object with Full DESeq2 object, diagnostic plots, DGE log fold change results data.table, per gene TPM results data.table
+#' @export
+get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_universe = gene_body_hg38, gene_symbol_column = NULL,
+                                 ensembl_id_column = NULL, formula_string, min_transcripts = 10, verbose = T) {
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_deseq2_diff_expr",
+                       counts_file_path, condition_file_path, gene_symbol_column,
+                       ensembl_id_column, formula_string, min_transcripts)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_deseq2_diff_expr")
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Differential Gene Expression Analysis with DESeq2 v", utils::packageVersion("DESeq2")))
+  cat("\n")
+  cli::cli_text("{crayon::white('==================')}")
+  cli::cli_text("{crayon::cyan({clisymbols::symbol$arrow_down})} {crayon::cyan({'DOWN'})} {crayon::cyan({clisymbols::symbol$arrow_down})} {crayon::white({clisymbols::symbol$square})}{crayon::white({clisymbols::symbol$square})} {crayon::red({clisymbols::symbol$arrow_up})} {crayon::red({'UP'})} {crayon::red({clisymbols::symbol$arrow_up})}")
+  cli::cli_text("{crayon::white('==================')}")
+  cat("\n")
+
+  # Read in all raw counts input file, remove any rows with empty or NA cells for gene symbol/Ensembl ID if provided
+  # then map the provided Ensembl IDs to the hg38 reference using gene universe
+  cli::cli_text("{crayon::green('Gene Universe')} {clisymbols::symbol$arrow_right} used for final gene symbol mapping {crayon::white(clisymbols::symbol$ellipsis)}")
+  paint::paint(gUtils::gr2dt(gene_universe))
+  cat("\n")
+
+  cli::cli_alert_info("Reading {.file {counts_file_path}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  if(!is.null(gene_symbol_column) & is.null(ensembl_id_column)) {
+    cli::cli_text("{crayon::green({gene_symbol_column})} {clisymbols::symbol$arrow_right} name of column with HUGO gene symbols")
+    full_counts <- data.table::fread(file = counts_file_path,
+                                     sep = "\t",
+                                     header = T) %>%
+      dplyr::rename("gene_name" = dplyr::all_of(gene_symbol_column)) %>%
+      dplyr::filter(gene_name %in% unique(gene_universe$gene_name) & !gene_name %in% c("",NA))
+
+  } else if(is.null(gene_symbol_column) & !is.null(ensembl_id_column)) {
+    # TODO: Likely need to modify this for use with different gene_universes
+    cli::cli_text("{crayon::green({ensembl_id_column})} {clisymbols::symbol$arrow_right} name of column with Ensembl gene IDs")
+    full_counts <-  data.table::fread(file = counts_file_path,
+                                      sep = "\t",
+                                      header = T) %>%
+      dplyr::rename("gene_id" = dplyr::all_of(ensembl_id_column)) %>%
+      dplyr::inner_join(y = gUtils::gr2dt(gene_universe) %>%
+                          dplyr::select(gene_id, gene_name) %>%
+                          dplyr::distinct(),
+                        by = "gene_id") %>%
+      dplyr::filter(!gene_name %in% c("",NA))
+
+  } else if(!is.null(gene_symbol_column) & !is.null(ensembl_id_column)) {
+    # Only provide one or the other, best practice is ensembl_id_column if hg19 or gene_symbol_column if hg38
+    stop(cli::cli_alert_danger("Please provide either {crayon::green('gene_symbol_column')} or {crayon::green('ensembl_id_column')} but not both"))
+
+  } else if(is.null(gene_symbol_column) & is.null(ensembl_id_column)) {
+    # Only provide one or the other, best practice is ensembl_id_column if hg19 or gene_symbol_column if hg38
+    stop(cli::cli_alert_danger("Must provide either {crayon::green('gene_symbol_column')} or {crayon::green('ensembl_id_column')}"))
+  }
+  cli::cli_alert_success("Success")
+  cat("\n")
+
+  # Use the formula to determine the final counts matrix and conditions DT
+  cli::cli_alert_info("Differential Expression Design: {.emph {crayon::green({formula_string})}}")
+  y_condition <- all.vars(formula(formula_string))[1] # first element is always the 'y' condition
+  x_condition <- dplyr::last(all.vars(formula(formula_string)[[3]])) # last element is always the 'x' condition
+
+  # Collect the provided covariates and build the expected columns for the conditions DT
+  if(length(all.vars(formula(formula_string))) > 2) {
+    # these are any other variables provided after excluding the x condition
+    covars <- all.vars(formula(formula_string)[[3]])[-length(all.vars(formula(formula_string)[[3]]))]
+    cli::cli_alert_info("Covariates: {.emph {crayon::green({covars})}}")
+    condition_cols <- c("sample","condition",covars)
+  } else {
+    condition_cols <- c("sample","condition")
+  }
+
+  # Build conditions from file or DT
+  if(is.character(condition_file_path)) {
+    full_conditions <- data.table::fread(file = condition_file_path,
+                                         sep = "\t",
+                                         header = T)
+
+  } else if(is.data.frame(condition_file_path)){
+    full_conditions <- data.table::as.data.table(x = condition_file_path)
+  }
+
+  # Sanity check here that the conditions DT has correct column names
+  # should be sample, condition, type, plus any covariates in the formula
+  if(dt_sanitycheck(query_dt = full_conditions, expected_cols = condition_cols)) {
+    cli::cli_alert_success("Success")
+    cat("\n")
+  } else {
+    stop(cli::cli_alert_danger("Check input conditions and formula string for consistency"))
+  }
+
+  # Now build the final formula-specific conditions matrix
+  formula_conditions <- full_conditions %>%
+    dplyr::filter(condition %in% c(y_condition, x_condition)) %>%
+    dplyr::select(all_of(condition_cols))
+
+  # Factorize condition matrix variables
+  formula_conditions$condition <- factor(formula_conditions$condition,
+                                         levels = c(x_condition, y_condition))
+
+  # Now build the final formula-specific counts matrix
+  formula_counts <- full_counts %>%
+    dplyr::select(gene_name, all_of(formula_conditions$sample))
+
+  # Final conversion to matrix format
+  formula_conditions <- tibble::column_to_rownames(formula_conditions,
+                                                   var = "sample")
+  formula_counts <- tibble::column_to_rownames(formula_counts,
+                                               var = "gene_name")
+
+  # Simple hard filter first to remove genes with little expression across all samples
+  # Remove all genes with mean expression across all samples lower than minimum threshold
+  per_gene_mean_expr <- formula_counts %>%
+    dplyr::mutate("expr_mean" = round(rowSums(formula_counts) / ncol(formula_counts),
+                                     digits = 0)) %>%
+    dplyr::select(expr_mean) %>%
+    purrr::as_vector() %>%
+    as.numeric()
+
+  # Create diagnostic QC plots for simple hard filter
+  per_gene_expr_qc <- data.table::data.table("normalized_per_gene_mean_expr" = log10(per_gene_mean_expr + 1),
+                                             "is_filtered" = log10(per_gene_mean_expr + 1) < log10(min_transcripts + 1))
+  per_gene_expr_qc <- per_gene_expr_qc %>%
+    dplyr::mutate("filtered_vs_survived" = dplyr::case_when(is_filtered == T ~ "Filtered",
+                                                            is_filtered == F ~ "Survived"))
+  per_gene_expr_qc$filtered_vs_survived <- factor(per_gene_expr_qc$filtered_vs_survived,
+                                                  levels = c("Survived","Filtered"))
+
+  # Filter out any low expression genes identified
+  filtered_formula_counts <- formula_counts[!per_gene_expr_qc$is_filtered,]
+
+  # Build the DESeq2 data set from the counts and conditions matrix
+  formula_design <- paste0("~ ", stringr::str_remove(string = as.character(formula(formula_string)[3]),
+                                                     pattern = "(|)") %>%
+                             stringr::str_replace(pattern = x_condition, replacement = "condition"))
+
+  cli::cli_text("{crayon::green('Conditions')} {clisymbols::symbol$arrow_right} final conditions data {crayon::white(clisymbols::symbol$ellipsis)}")
+  paint::paint(formula_conditions)
+  cat("\n")
+
+  cli::cli_text("{crayon::green('Counts')} {clisymbols::symbol$arrow_right} final filtered transcript count data {crayon::white(clisymbols::symbol$ellipsis)}")
+  paint::paint(filtered_formula_counts)
+  cat("\n")
+
+  # Run DESeq2
+  deseq2_dataset <- DESeq2::DESeqDataSetFromMatrix(countData = filtered_formula_counts,
+                                                   colData = formula_conditions,
+                                                   design = formula(formula_design))
+  deseq2_obj <- DESeq2::DESeq(object = deseq2_dataset)
+
+  # Visualize the gap imputation with a diagnostic plot
+  cli::cli_alert_info("Generating diagnostic QC plots {crayon::white(clisymbols::symbol$ellipsis)}")
+  # Historgram of Log10(counts + 1) for all genes with threshold
+  normalized_expr_histogram <- ggplot2::ggplot(per_gene_expr_qc) +
+    ggplot2::geom_histogram(ggplot2::aes(x = normalized_per_gene_mean_expr), fill = "gray", color = "black", bins = 50) +
+    ggplot2::geom_vline(xintercept = log10(min_transcripts + 1), color = "orange", linewidth = 1.5, linetype = "dashed") +
+    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
+    ggplot2::labs(x = expression("Log"[10]*"(transcript counts + 1)"),
+                  y = "Number of genes") +
+    ggplot2::theme(panel.background = element_rect(fill = "transparent"),
+                   panel.border = element_rect(fill = "transparent"))
+
+  # Pie chart of percentage of genes filtered vs survived
+  pct_surv_vs_filter <- ggpie::ggpie(data = per_gene_expr_qc,
+                                     group_key = "filtered_vs_survived",
+                                     count_type = "full",
+                                     label_info = "all",
+                                     label_size = 5,
+                                     label_pos = "out",
+                                     label_type = "horizon",
+                                     fill_color = paletteer::paletteer_d("ggthemes::wsj_red_green")) +
+    theme(legend.position = "none")
+
+  # JitterViolinBox of Log10(counts + 1) for all genes with threshold
+  normalized_expr_surv_vs_filter <-ggplot2::ggplot(per_gene_expr_qc, aes(x = filtered_vs_survived, y = normalized_per_gene_mean_expr)) +
+    ggplot2::geom_jitter(aes(color = filtered_vs_survived), alpha = 0.4, width = 0.10, size = 2.5) +
+    ggplot2::geom_violin(fill = "black", alpha = 0.4, scale = "width") +
+    ggplot2::geom_boxplot(fill = "white", outliers = F, alpha = 0.5, width = 0.5) +
+    ggplot2::annotate(geom = "point",
+                      x = levels(per_gene_expr_qc$filtered_vs_survived),
+                      y = per_gene_expr_qc %>%
+                        dplyr::group_by(filtered_vs_survived) %>%
+                        dplyr::summarise("group_means" = mean(normalized_per_gene_mean_expr)) %>%
+                        dplyr::select(group_means) %>%
+                        purrr::as_vector() %>%
+                        as.numeric(),
+                      size = 5,
+                      color = "cyan",
+                      alpha = 0.75) +
+    ggplot2::labs(x = NULL,
+                  y = "Mean expression per gene") +
+    ggplot2::scale_color_manual(name = "Gene", values = paletteer::paletteer_d("ggthemes::wsj_red_green")) +
+    ggplot2::theme(legend.position = "bottom",
+                   panel.background = element_rect(fill = "transparent"),
+                   panel.border = element_rect(fill = "transparent"))
+
+  # Combine the diagnostics QC plots
+  diagnostic_plot <- patchwork::wrap_plots(list(normalized_expr_histogram, normalized_expr_surv_vs_filter,patchwork::plot_spacer(),pct_surv_vs_filter),
+                                           nrow = 2)
+  cli::cli_alert_success("Success")
+  cat("\n")
+
+  # Run the log fold change shrink transform to get the results
+  cli::cli_text("{crayon::green('Log fold change shrinkage')} {clisymbols::symbol$arrow_right} used to shrink excessive variability in log fold change estimates across samples in lowly expressed genes {crayon::white(clisymbols::symbol$ellipsis)}")
+  # Log fold change shrinkage to more accurately visualize and then rank the results
+  deseq2_lfc_shrink_results <- DESeq2::lfcShrink(dds = deseq2_obj,
+                                                 coef = 2,
+                                                 type = "apeglm")
+
+  # Extract the improved LFC values
+  cli::cli_alert_info("Converting DESeq2 differential expression results to data.table {crayon::white(clisymbols::symbol$ellipsis)}")
+  deseq2_lfc_shrink_results_dt <- data.table::data.table("gene" = rownames(deseq2_lfc_shrink_results),
+                                                         "base_mean" = round(deseq2_lfc_shrink_results$baseMean, digits = 2),
+                                                         "log2_fc" = round(deseq2_lfc_shrink_results$log2FoldChange, digits = 4),
+                                                         "p_val" = deseq2_lfc_shrink_results$pvalue,
+                                                         "p_val_adj" = deseq2_lfc_shrink_results$padj)
+
+  # Calculate the transcripts per million (TPM)
+  # Conversion from DESeq2 calculated FPKM (fragment counts normalized per kilobase of feature length per million mapped fragments)
+  # originally from Igor Dolgalev: https://github.com/igordot/sns/blob/main/scripts/dge-deseq2.R
+  # In-depth explanation described below
+  # https://www.novogene.com/us-en/resources/blog/how-to-choose-normalization-methods-tpm-rpkm-fpkm-for-mrna-expression/
+  # First need to add gene lengths (used to generate FPKM values), calculated as the sum of all exons lengths
+  cli::cli_alert_info("Calculating transcripts per million (TPM) results to data.table {crayon::white(clisymbols::symbol$ellipsis)}")
+  gene_lengths <- gUtils::gr2dt(gene_universe) %>%
+    dplyr::filter(segment == "exon" & gene_name %in% rownames(deseq2_obj)) %>%
+    dplyr::group_by(gene_name) %>%
+    dplyr::summarise("basepairs" = sum(width)) %>%
+    dplyr::arrange(match(gene_name, rownames(deseq2_obj)))
+
+  mcols(deseq2_obj)$basepairs <- gene_lengths$basepairs
+
+  fpkm_matrix <- DESeq2::fpkm(deseq2_obj, robust = FALSE)
+  deseq2_tpm_results <- apply(fpkm_matrix, 2, function(x) { exp(log(x) - log(sum(x)) + log(1e6)) })
+  deseq2_tpm_results_dt <- data.table::as.data.table(deseq2_tpm_results, keep.rownames = T) %>%
+    dplyr::rename("gene" = rn)
+
+  # Return the DESeq2 for downstream use
+  cli::cli_alert_success("Differential expression analysis finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_deseq2_diff_expr",
+                    stopwatch_start = process_start)
+
+  deseq2_output_list <- list("deseq2_obj" = deseq2_obj,
+                             "diagnostic_plots" = diagnostic_plot,
+                             "deseq2_results_dt" = deseq2_lfc_shrink_results_dt,
+                             "deseq2_tpm_dt" = deseq2_tpm_results_dt
+  )
+  return(deseq2_output_list)
+}
+
+#' @name get_fgsea_pathway_enrichment
+#' @title Run fgsea gene set enrichment analysis on DESeq2 differential gene expression output
+#'
+#' @description
+#' Run fgsea pathway enrichment workflow from DESeq2 DGE analysis with `get_deseq2_diff_expr()`
+#' using pathway gene set GMT file of interest.
+#'
+#' @param deseq2_diff_expr_output DESeq2 object, works directly from `get_deseq2_diff_expr()` output
+#' @param pathways GMT file with desired pathway gene sets to test for enrichment
+#' @param cpus number of cpus for reading in data, used by `fgsea::fgseaMultilevel()`, default: 1
+#' @param verbose Output CLI during workflow, default: TRUE
+#'
+#' @examples
+#' # Run the DESeq2 DGE workflow
+#' # dge_demo <- get_deseq2_diff_expr(
+#' # counts_file_path = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"),
+#' # condition_file_path = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"),
+#' # gene_universe = gene_body_hg38,
+#' # gene_symbol_column = "#GENE",
+#' # ensembl_id_column = NULL,
+#' # formula_string = "U266 ~ RPMI8226",
+#' # min_transcripts = 10)
+#'
+#' # Get enrichment against B cell specific pathways from ImmuneSigDB
+#' # get_fgsea_pathway_enrichment(
+#' # deseq2_diff_expr_output = dge_demo,
+#' # pathways = "c7.bcell.immunesigdb.v2025.1.Hs.symbols.gmt",
+#' # cpus = 2)
+#'
+#' @returns list object with ranked genes vector and enrichment results data.table
+#' @export
+get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus = 1, verbose = T) {
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_fgsea_pathway_enrichment",
+                       pathways, cpus)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_fgsea_pathway_enrichment")
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Gene Set Enrichment Analysis with fgsea v", utils::packageVersion("fgsea")))
+  cat("\n")
+
+  # Check pathway input, if list object, continue ahead. If GMT file path, read in
+  cli::cli_alert_info("Reading {.file {pathways}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  if(file.exists(pathways) & tools::file_ext(pathways) == "gmt") {
+    pathway_list <- fgsea::gmtPathways(pathways)
+  }
+  cli::cli_alert_success("Success")
+  cat("\n")
+
+  cli::cli_text("{crayon::green('Pathways')} {clisymbols::symbol$arrow_right} gene sets to test {crayon::white(clisymbols::symbol$ellipsis)}")
+  pio::pioDisp(data.table::data.table("pathways" = names(pathway_list)))
+  cat("\n")
+
+  # Create ranked list of genes based on the sign of the logFC and the -log10 p-adj
+  ranked_genes <- deseq2_diff_expr_output$deseq2_results_dt %>%
+    dplyr::mutate("rank_score" = sign(log2_fc) * -log10(p_val_adj + .Machine$double.eps * 10^-299)) %>%
+    dplyr::arrange(dplyr::desc(rank_score)) %>%
+    tidyr::drop_na() %>%
+    dplyr::select(gene, rank_score)
+
+  # Create named vector to test for enrichment of pathways with fgsea
+  rank_set <- ranked_genes$rank_score
+  names(rank_set) <- ranked_genes$gene
+
+  # Run fgsea with standard parameters
+  pathway_analysis <- fgsea::fgseaMultilevel(pathways = pathway_list,
+                                             stats = rank_set,
+                                             scoreType = "std",
+                                             minSize = 10,
+                                             maxSize = 500,
+                                             BPPARAM = BiocParallel::MulticoreParam(cpus),
+                                             nPermSimple = 1000)
+
+  # Output list of ranked genes and pathway enrichment DT
+  cat("\n")
+  cli::cli_alert_success("Gene set enrichment analysis finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_fgsea_pathway_enrichment",
+                    stopwatch_start = process_start)
+
+  enrichment_output <- list("ranked_genes" = rank_set,
+                            "enrichment_results_dt" = pathway_analysis)
+  return(enrichment_output)
+}
 
 
 
@@ -850,7 +1498,7 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
 #' @param path_to_normal_dir Path to directory of normal sample Alfred summary files
 #' @param seq_protocol Type of sequencing protocol for display purposes, default: WGS
 #'
-#' @return Patchwork 'quilt'-like plot of ggplots
+#' @returns Patchwork 'quilt'-like plot of ggplots
 #' @export
 get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL, seq_protocol = "WGS") {
 
@@ -1115,7 +1763,7 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 #' @param plot_sample_names Output plots to include sample names on y-axis, default: TRUE
 #' @param include_caveman Add caveman to consensus list if used in SNV variant calling, default: FALSE
 #'
-#' @return Patchwork 'quilt'-like plot of ggplots
+#' @returns Patchwork 'quilt'-like plot of ggplots
 #' @export
 get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_dir = NULL, snv_indel_obj = NULL, plot_sample_names = T, include_caveman = F) {
 
@@ -1296,7 +1944,7 @@ get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_di
 #' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman
 #' @param mut_type Type of mutations within VCF, supported: snv, indel
 #'
-#' @return data.table object with read support and VAF per record
+#' @returns data.table object with read support and VAF per record
 #' @export
 get_vaf <- function(vcf_obj, caller, mut_type) {
 
@@ -1425,7 +2073,7 @@ get_vaf <- function(vcf_obj, caller, mut_type) {
 #' @param discovery_genes Gene set vector used for discovery with `*_consensus_filter``=0`
 #' @param return_type Output either the converted maf-lite format table or data.table of standard format mutation table, supported: maf.lite, data.table
 #'
-#' @return data.table like in either maf-lite or standard format
+#' @returns data.table like in either maf-lite or standard format
 #' @export
 get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filter = 2, indel_consensus_filter = 2,
                          strict_samples = NULL, discovery_genes = NULL, return_type = "maf.lite") {
@@ -1636,7 +2284,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 #' @param min_map_qual Minimum mapping quality required for a read to be counted, default: 35
 #' @param threads Number of threads to use for parallel execution, default: 1
 #'
-#' @return data.table object with the columns: #CHR, POS, Count_A, Count_C, Count_G, Count_T, Good_depth
+#' @returns data.table object with the columns: #CHR, POS, Count_A, Count_C, Count_G, Count_T, Good_depth
 #' @export
 get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, min_map_qual = 35, threads = 1) {
 
@@ -1736,7 +2384,7 @@ get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, mi
 #' @param caller Name of caller that generated input CNV to be converted, supported: Battenberg and FACETS
 #' @param sample_id Unique identifier to add to output, default: NULL
 #'
-#' @return data.table object with corrected CNV segments
+#' @returns data.table object with corrected CNV segments
 #' @export
 get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 
@@ -1838,90 +2486,6 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 }
 
 
-#' @name get_dryclean_segmentation
-#' @title Generate a segmentation file from a dryclean fragCounter read depth profile
-#'
-#' @description
-#' Given dryclean processed fragCounter read depth profile, run DNAcopy's CBS algorithm
-#' in a parallel manner to produce a segmentation file that is compatible with GISTIC2.0.
-#'
-#' @param path_to_dryclean_profile Path to dryclean fragCounter read depth profile
-#' @param threads Number of threads to use for parallel execution, default: 1
-#' @param random_seed Numeric value to use as random seed for consistent execution
-#'
-#' @return data.table object with required GISTIC2.0 columns
-#' @export
-get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, random_seed = 999) {
-
-  # Set parallel cores parameter
-  message("Setting parallel cores to ", threads, " ...")
-  doParallel::registerDoParallel(cores = threads)
-
-  # Display the random number used for this run
-  message("Setting random seed to ", random_seed, " ...")
-  set.seed(random_seed)
-
-  # Read in dryclean fragCounter coverage for normal sample
-  message("Reading in drycleaned fragCounter coverage ...")
-  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_profile, pattern = "\\..*dryclean.*rds"))
-  dryclean_frag_cov <- readRDS(file = path_to_dryclean_profile)
-
-  # Grab the drycleaned fragCounter foreground read coverage values
-  foreground_cov <- as.double(GenomicRanges::values(dryclean_frag_cov)[, "foreground"])
-
-  # Add very small constant value to move zero values to non-zero values before segmentation
-  zero_idx <- which(foreground_cov == 0)
-  if(length(zero_idx) > 0) {
-    small_const <- .Machine$double.eps
-    foreground_cov <- foreground_cov + small_const
-    message(paste(length(zero_idx),
-                  "coverage data points have zero value, adding small constant value",
-                  small_const,
-                  "to prevent log error ..."))
-  }
-
-  # Grab index of all non-NA drycleaned foreground read covearge
-  idx <- which(!is.na(foreground_cov))
-  foreground_cov_nona <- foreground_cov[idx]
-  seqnames_nona <- as.character(GenomicRanges::seqnames(dryclean_frag_cov))[idx]
-  start_nona <- GenomicRanges::start(dryclean_frag_cov)[idx]
-
-  # Begin foreach construct to parallelize the DNAcopy command per chromosome and then stitch the results together in a GRanges object
-  chrom_iter_list <- as.character(unique(dryclean_frag_cov@seqnames@values))
-  message("Running DNAcopy CBS segmentation workflow ...")
-
-  final_cbs_segmentation <- foreach::foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
-
-    # Grab chromosome specific data for run the DNAcopy workflow
-    per_chrom_idx <- which(seqnames_nona == chrom_iter_list[x])
-    log_signal_per_chrom <- log(foreground_cov_nona)[per_chrom_idx]
-    seqnames_per_chrom <- seqnames_nona[per_chrom_idx]
-    start_per_chrom <- start_nona[per_chrom_idx]
-
-    # Run DNAcopy CBS workflow
-    scna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
-                                   chrom = seqnames_per_chrom,
-                                   maploc = start_per_chrom,
-                                   data.type = 'logratio')
-
-    scna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(scna_per_chrom),
-                                                    alpha = 1e-5,
-                                                    verbose = FALSE,
-                                                    undo.splits = "sdundo",
-                                                    undo.SD = 2)
-    scna_segmentation_per_chrom_dt <- data.table::as.data.table(scna_segmentation_per_chrom$output)
-    scna_segmentation_per_chrom_dt$ID <- sample_id
-
-    # Return output of the foreach loops, each DT obj will be concatenated
-    scna_segmentation_per_chrom_dt
-  }
-
-  # Return the DT of CBS output for easy downstream use
-  message("Segmentation finished ...")
-  return(final_cbs_segmentation)
-}
-
-
 
 
 
@@ -1941,7 +2505,7 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, threads = 1, ran
 #' @param gtf_file_path Path to GTF file
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
-#' @return GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
 
@@ -1962,7 +2526,7 @@ read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
 #' @param gtf_file_path Path to GTF file
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
-#' @return GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
 
@@ -1985,7 +2549,7 @@ get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlength
 #' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 2
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
-#' @return GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths()) {
 
@@ -1998,7 +2562,7 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
                               header = TRUE,
                               stringsAsFactors = FALSE,
                               nThread = cpus)
-  maf_gr <- gUtils::dt2gr(maf_dt)
+  maf_gr <- dt_to_gr(maf_dt)
 
   # Sort out seqinfo/levels/lengths mess
   maf_gr <- gr_refactor_seqs(input_gr = maf_gr, new_levels = seq_lengths)
@@ -2019,7 +2583,7 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
 #' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
-#' @return GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_names = NULL, cpus = 1, seq_lengths = gUtils::hg_seqlengths()) {
 
@@ -2074,7 +2638,7 @@ read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_name
     bed_dt$chr <- dplyr::recode(bed_dt$chr, `24` = "Y", .default = as.character(bed_dt$chr))
   }
 
-  bed_gr <- gUtils::dt2gr(bed_dt)
+  bed_gr <- dt_to_gr(bed_dt)
 
   # Sort out seqinfo/levels/lengths mess
   bed_gr <- gr_refactor_seqs(input_gr = bed_gr, new_levels = seq_lengths)
@@ -2097,7 +2661,7 @@ read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_name
 #' @param mut_type Type of mutations within VCF, supported: snv, indel, snp
 #' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
 #'
-#' @return GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NULL,
                           caller = NULL, mut_type = NULL, seq_lengths = gUtils::hg_seqlengths()) {
@@ -2357,7 +2921,7 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 #' @param cpus number of cpus for reading in data, used by `data.table::fread()`
 #' @param add_uniq_id indicate if the output data.table should include a unique identifier column, derived from input file basename
 #'
-#' @return data.table object with all data under preserved column construct
+#' @returns data.table object with all data under preserved column construct
 #' @export
 aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_header = TRUE,
                             cpus = 1, add_uniq_id = FALSE) {
@@ -2408,3 +2972,239 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
 
 
 
+#
+#
+# }}}}------->>> Geoms
+#
+#
+
+#' @name geom_deseq2_volcano
+#' @title Volcano plot for exploring results from DESeq2 differential gene expression analysis
+#'
+#' @description
+#' Creates a ggplot2 style volcano plot for exploring the results from a DESeq2 DGE
+#' analysis with parameters for easy styling
+#'
+#' @param deseq2_diff_expr_output DESeq2 object, works directly from `get_deseq2_diff_expr()` output
+#' @param log2_fc_threshold Numeric cutoff for coloring points based on log fold change, default: 2
+#' @param p_adj_threshold Numeric cutoff for coloring points based on adjust P-value significance, default: 0.05
+#' @param n_positive_labels Number of top genes to label on positive side of log fold change, default: 25
+#' @param n_negative_labels Number of top genes to label on negative side of log fold change, default: 25
+#' @param label_vector Set of a priori genes to label, cannot be used in tandem with top N genes
+#' @param point_label_nudge_x Distance on x-axis to adjust the gene labels, can be positive or negative value, default: 0
+#' @param point_label_nudge_y Distance on y-axis to adjust the gene labels, can be positive or negative value, default: 0
+#' @param condition_label_x Location on x-axis to put condition labels, default: 5
+#'
+#' @examples
+#' # Run the DESeq2 DGE workflow
+#' # dge_demo <- get_deseq2_diff_expr(
+#' # counts_file_path = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"),
+#' # condition_file_path = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"),
+#' # gene_universe = gene_body_hg38,
+#' # gene_symbol_column = "#GENE",
+#' # ensembl_id_column = NULL,
+#' # formula_string = "U266 ~ RPMI8226",
+#' # min_transcripts = 10)
+#'
+#' # Exploratory plot with top 25 genes labeled on both ends of spectrum
+#' # geom_deseq2_volcano(deseq2_diff_expr_output = dge_demo)
+#'
+#' # Targeted assessment with labels for genes of interest
+#' # geom_deseq2_volcano(deseq2_diff_expr_output = dge_demo, label_vector = c("CCND1","MYC","MYCL"))
+#'
+#' @returns ggplot object
+#' @export
+geom_deseq2_volcano <- function(deseq2_diff_expr_output, log2_fc_threshold = 2, p_adj_threshold = 0.05,
+                                n_positive_labels = 25, n_negative_labels = 25, label_vector = NULL,
+                                point_label_nudge_x = 0, point_label_nudge_y = 0, condition_label_x = 5) {
+  # Build the set of labels to add to the plot
+  if(!is.null(label_vector)) {
+    point_labels <- label_vector
+
+  } else {
+    # Extract the top N genes to label for both LFC directions
+    top_n_pos_lfc_genes <- deseq2_diff_expr_output$deseq2_results_dt %>%
+      dplyr::arrange(p_val_adj) %>%
+      dplyr::filter(log2_fc > 0) %>%
+      dplyr::select(gene) %>%
+      dplyr::slice_head(n = n_positive_labels) %>%
+      purrr::as_vector()
+
+    top_n_neg_lfc_genes <- deseq2_diff_expr_output$deseq2_results_dt %>%
+      dplyr::arrange(p_val_adj) %>%
+      dplyr::filter(log2_fc < 0) %>%
+      dplyr::select(gene) %>%
+      dplyr::slice_head(n = n_negative_labels) %>%
+      purrr::as_vector()
+
+    point_labels <- c(top_n_pos_lfc_genes, top_n_neg_lfc_genes)
+  }
+
+  # Transform the observed P-values to -log10, add labels and colors for points
+  dge_plot_data <- deseq2_diff_expr_output$deseq2_results_dt %>%
+    dplyr::mutate("neg_log10_p_adj" = -log10(p_val_adj + .Machine$double.eps * 10^-299),
+                  "point_label" = dplyr::case_when(gene %in% point_labels ~ gene,
+                                                   !gene %in% point_labels ~ NA),
+                  "point_color" = dplyr::case_when(p_val_adj <= p_adj_threshold &
+                                                     sign(log2_fc) == -1 &
+                                                     abs(log2_fc) >= log2_fc_threshold ~ ggplot2::alpha(colour = "dodgerblue", alpha = 0.7),
+                                                   p_val_adj <= p_adj_threshold &
+                                                     sign(log2_fc) == 1 &
+                                                     abs(log2_fc) >= log2_fc_threshold ~ ggplot2::alpha(colour = "firebrick2", alpha = 0.7),
+                                                   p_val_adj <= p_adj_threshold &
+                                                     dplyr::between(x = abs(log2_fc), left = 0, right = log2_fc_threshold) ~ ggplot2::alpha(colour = "gray10", alpha = 0.5),
+                                                   p_val_adj > p_adj_threshold ~ ggplot2::alpha(colour = "gray10", alpha = 0.5)))
+
+  # Combine the plot elements to create volcano plot
+  volcano_plot <- ggplot2::ggplot(dge_plot_data) +
+    ggplot2::geom_point(aes(x = neg_log10_p_adj, y = log2_fc), color = dge_plot_data$point_color) +
+    ggrepel::geom_text_repel(aes(x = neg_log10_p_adj, y = log2_fc, label = point_label),
+                             min.segment.length = 0, max.overlaps = 1000, nudge_x = point_label_nudge_x, nudge_y = point_label_nudge_y, na.rm = T) +
+    ggplot2::labs(x = expression("-Log"[10]*"("*italic("Adj. P")*")"),
+                  y = expression("Log"[2]*"(Fold Change)")) +
+    ggplot2::annotate(geom = "label",
+                      label = c(levels(SummarizedExperiment::colData(deseq2_diff_expr_output$deseq2_obj)$condition)[1],
+                                levels(SummarizedExperiment::colData(deseq2_diff_expr_output$deseq2_obj)$condition)[2]),
+                      x = condition_label_x,
+                      y = c(min(dge_plot_data$log2_fc),
+                            max(dge_plot_data$log2_fc)),
+                      size = 4.75,
+                      fontface = "bold") +
+    ggplot2::theme(panel.border = ggplot2::element_rect(fill = "transparent"),
+                   panel.background = ggplot2::element_blank())
+
+  return(volcano_plot)
+}
+
+#' @name geom_gsea_enrichment
+#' @title Enrichment plot for exploring results from fgsea pathway enrichment analysis
+#'
+#' @description
+#' Creates a ggplot2 style enrichment plot for exploring the results from a fgsea GSEA
+#' analysis.
+#'
+#' @param pathways GMT file with desired pathway gene sets to test for enrichment
+#' @param pathway_of_interest Specific pathway to in GMT to explore
+#' @param ranked_genes Named vector of genes and their ranks, works directly from `get_fgsea_pathway_enrichment()` output
+#'
+#' @examples
+#' # Run the DESeq2 DGE workflow
+#' # dge_demo <- get_deseq2_diff_expr(
+#' # counts_file_path = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"),
+#' # condition_file_path = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"),
+#' # gene_universe = gene_body_hg38,
+#' # gene_symbol_column = "#GENE",
+#' # ensembl_id_column = NULL,
+#' # formula_string = "U266 ~ RPMI8226",
+#' # min_transcripts = 10)
+#'
+#' # Get enrichment against B cell specific pathways from ImmuneSigDB
+#' # gsea_demo <- get_fgsea_pathway_enrichment(
+#' # deseq2_diff_expr_output = dge_demo,
+#' # pathways = "c7.bcell.immunesigdb.v2025.1.Hs.symbols.gmt",
+#' # cpus = 2)
+#'
+#' # Plot the enrichment of specific pathway
+#' # geom_gsea_enrichment(
+#' # pathways = "~/morganLab/nsd2dTagSystem/data/c7.bcell.immunesigdb.v2025.1.Hs.symbols.gmt",
+#' # pathway_of_interest = "GSE38304_MYC_NEG_VS_POS_GC_BCELL_UP",
+#' # ranked_genes = gsea_demo$ranked_genes)
+#'
+geom_gsea_enrichment <- function(pathways, pathway_of_interest, ranked_genes) {
+  # Check pathway GMT file path, read in
+  if(file.exists(pathways) & tools::file_ext(pathways) == "gmt") {
+    pathway_list <- fgsea::gmtPathways(pathways)
+  }
+
+  # Subset to pathway gene set of interest
+  pathway_gene_set <- pathway_list[[pathway_of_interest]]
+
+  # Code originally from fgsea
+  rnk <- rank(-ranked_genes)
+  ord <- order(rnk)
+
+  statsAdj <- ranked_genes[ord]
+  statsAdj <- sign(statsAdj) * abs(statsAdj)
+
+  pathway <- unname(as.vector(na.omit(match(pathway_gene_set, names(statsAdj)))))
+  pathway <- sort(pathway)
+  pathway <- unique(pathway)
+  gseaRes <- fgsea::calcGseaStat(stats = statsAdj,
+                                 selectedStats = pathway,
+                                 returnAllExtremes = TRUE)
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+
+  spreadES <- max(tops) - min(bottoms)
+  toPlot <- data.table::data.table("rank" = c(0, xs, n + 1), "ES" = c(0, ys, 0))
+  ticks <- data.table::data.table("rank" = pathway, "stat" = statsAdj[pathway])
+  stats <- data.table::data.table("rank" = seq_along(ranked_genes), "stat" = statsAdj)
+
+  # Build the enrichment plot using 3 separate subsections
+  # Starting with the total enrichment score curve
+  enrichment_score_curve <- ggplot2::ggplot(toPlot) +
+    ggplot2::geom_line(aes(x = rank, y = ES), color = "green", linewidth = 1.5) +
+    ggplot2::geom_hline(yintercept = 0, color = "black") +
+    ggplot2::labs(x = NULL,
+                  y = "Enrichment Score") +
+    ggplot2::scale_x_continuous(expand = c(0,0)) +
+    ggplot2::scale_y_continuous(expand = c(0.01,0.01)) +
+    ggplot2::theme(panel.grid.major.x = ggplot2::element_line(color = "gray", linetype = "dotted"),
+                   panel.grid.major.y = element_blank(),
+                   panel.grid.minor.y = element_blank(),
+                   panel.background = element_blank(),
+                   panel.border = element_rect(fill = "transparent"),
+                   axis.line.x = element_blank(),
+                   axis.text.x = element_blank(),
+                   axis.ticks.x = element_blank(),
+                   axis.text.y = element_text(size = 13),
+                   axis.title.y = element_text(size = 14),
+                   plot.margin = unit(c(0.05,0.05,0.05,0.05), "mm"))
+
+  # Add dash marks for the hits of the pathway gene set
+  pathway_hits <- ggplot2::ggplot(ticks) +
+    ggplot2::geom_segment(aes(x = rank, xend = rank, y = -spreadES/16, yend = spreadES/16), linewidth = 0.3, color = "darkred") +
+    ggplot2::labs(x = NULL,
+                  y = "Hits") +
+    ggplot2::scale_x_continuous(expand = c(0,0)) +
+    ggplot2::scale_y_continuous(expand = c(0,0)) +
+    ggplot2::theme(panel.grid.major.x = element_blank(),
+                   panel.grid.major.y = element_blank(),
+                   panel.grid.minor.y = element_blank(),
+                   panel.background = element_blank(),
+                   axis.line.x = element_blank(),
+                   axis.text.x = element_blank(),
+                   axis.ticks.x = element_blank(),
+                   axis.title.y = element_text(size = 14),
+                   axis.text.y = element_blank(),
+                   axis.ticks.y = element_blank(),
+                   plot.margin = unit(c(0.05,0.05,0.05,0.05), "mm"))
+
+  # Finally, add the full ordered ranking of all genes used in the GSEA
+  gene_rank_seesaw <- ggplot2::ggplot(stats) +
+    ggplot2::geom_col(aes(x = rank, y = stat), width = 1, fill = "black") +
+    ggplot2::labs(x = "Rank Ordered Genes",
+                  y = "Rank Score") +
+    ggplot2::scale_x_continuous(expand = c(0,0)) +
+    ggplot2::scale_y_continuous(expand = c(0,0)) +
+    ggplot2::theme(panel.grid.major.x = element_line(color = "gray", linetype = "dotted"),
+                   panel.grid.major.y = element_blank(),
+                   panel.grid.minor.y = element_blank(),
+                   panel.background = element_blank(),
+                   panel.border = element_rect(fill = "transparent"),
+                   axis.text.y = element_text(size = 13),
+                   axis.title.y = element_text(size = 14),
+                   plot.margin = unit(c(0.05,0.05,0.05,0.05), "mm"))
+
+  # Combine the each subsection to make the final enrichment plot
+  enrichment_plot <- patchwork::wrap_plots(list(enrichment_score_curve, pathway_hits, gene_rank_seesaw),
+                                           nrow = 3,
+                                           ncol = 1,
+                                           axis_titles = "collect_x",
+                                           heights = c(0.55,0.1,0.30))
+  return(enrichment_plot)
+}

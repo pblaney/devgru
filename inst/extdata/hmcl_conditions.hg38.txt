@@ -1,0 +1,7 @@
+sample	condition
+rpmi8226_rep1	RPMI8226
+rpmi8226_rep2	RPMI8226
+rpmi8226_rep3	RPMI8226
+u266_rep1	U266
+u266_rep2	U266
+u266_rep3	U266

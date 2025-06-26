@@ -151,7 +151,7 @@ usethis::use_data(braf_dnase_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 
 # Don't rerun the code snippet but simply load the data here
 exclusion_regions_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "exclusion_regions.hg38.bed", package = "devgru"),
-                                   has_header = T)
+                                        has_header = T)
 # Export for usage
 usethis::use_data(exclusion_regions_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -200,7 +200,199 @@ usethis::use_data(chromosome_arms_hg38, internal = FALSE, overwrite = TRUE)
 #                                        read_depth_demo_chr22)
 
 # Don't rerun the code snippet but simply load the data here
-read_depth_demo_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "read_depth_profile.hg38.bed", package = "devgru"),
+read_depth_demo_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "read_depth_profile.hg38.bed.gz", package = "devgru"),
                                       has_header = T)
 # Export for usage
 usethis::use_data(read_depth_demo_hg38, internal = FALSE, overwrite = TRUE)
+
+#
+#
+# }}}}------->>> Representative Transcripts for Genes
+#
+#
+
+# # Load full gene annotation GTF
+# full_genes_gtf <- devgru::read_gtf_file(gtf_file_path = paste0(base_data_path, "Homo_sapiens.GRCh38.108.gtf.gz"))
+# full_genes_gtf_dt <- gr2dt(full_genes_gtf)
+#
+# # Filter to the same set of gene biotypes: protein-coding, long non-coding, and micro RNA
+# # Must have at least 1 transcript record
+# # Also filter out the records for selenocysteine, start codon, stop codon, and CDS as these regions are
+# # covered within the exons
+# genes_of_interest <- full_genes_gtf_dt %>%
+#   dplyr::filter(gene_biotype %in% c("IG_C_gene","IG_D_gene","IG_J_gene","IG_V_gene",
+#                                     "lncRNA","miRNA","protein_coding","TR_C_gene","TR_D_gene",
+#                                     "TR_J_gene","TR_V_gene") &
+#                   !is.na(gene_name) &
+#                   !is.na(transcript_id) &
+#                   !type %in% c("Selenocysteine","start_codon","stop_codon","CDS"))
+#
+# # The MANE Select and Plus Clinical transcripts will be used for protein coding genes
+# # https://www.ncbi.nlm.nih.gov/refseq/MANE/
+# mane_transcripts_full_summary <- data.table::fread(file = paste0(base_data_path, "MANE.GRCh38.v1.4.summary.txt.gz"))
+#
+# # Convert Ensembl string to match GTF and select single transcript for all genes
+# # To construct the final set of transcripts, the first MANE Plus Clinical transcript will be selected if both are present (n=66)
+# # For this version, the gene GNAS has 2 MANE Plus Clinical transcripts, in this case the first record will be kept (verified in UCSC browser this is most representative)
+# mane_clinical_plus_transcripts <- mane_transcripts_full_summary %>%
+#   dplyr::filter(MANE_status == "MANE Plus Clinical")
+# mane_clinical_plus_transcripts <- mane_clinical_plus_transcripts[!duplicated(mane_clinical_plus_transcripts$symbol)]
+#
+# # Checked for duplicates, none present
+# mane_select_transcripts <- mane_transcripts_full_summary %>%
+#   dplyr::filter(!symbol %in% mane_clinical_plus_transcripts$symbol)
+#
+# mane_transcripts <- rbind(mane_clinical_plus_transcripts, mane_select_transcripts) %>%
+#   dplyr::mutate("Ensembl_transcript" = str_remove(string = Ensembl_nuc, pattern = "\\..*"))
+#
+# # Grab the transcript name that corresponds to the gene annotation
+# # This match is done using the width of the gene record and transcript record
+# representative_transcript <- c()
+# for(i in 1:n_distinct(genes_of_interest$gene_name)) {
+#   # Isolate the available Ensembl transcript IDs for each gene
+#   gene_by_transcript <- genes_of_interest %>%
+#     dplyr::filter(gene_name == unique(genes_of_interest$gene_name)[i] & type == "transcript")
+#
+#   # Check for the MANE transcript
+#   gene_by_mane_transcript <- mane_transcripts %>%
+#     dplyr::filter(symbol == unique(genes_of_interest$gene_name)[i])
+#
+#   # Prioritize the MANE transcript if present
+#   if(nrow(gene_by_mane_transcript) > 0) {
+#     representative_transcript[i] <- gene_by_mane_transcript$Ensembl_transcript
+#
+#   } else {
+#     # otherwise, choose the longest
+#     representative_transcript[i] <- genes_of_interest %>%
+#       dplyr::filter(gene_name == unique(genes_of_interest$gene_name)[i] & type == "transcript") %>%
+#       dplyr::arrange(desc(width)) %>%
+#       dplyr::select(transcript_id) %>%
+#       dplyr::first() %>%
+#       as.character()
+#   }
+#
+#   if(i %% 1000 == 0) {
+#     message(paste0(i, " representative transcripts selected ..."))
+#   }
+# }
+#
+# # Subset each GR obj to only include the representative transcripts
+# per_representative_transcript_gr <- gr_refactor_seqs(dt2gr(genes_of_interest %>%
+#                                                              dplyr::filter(transcript_id %in% representative_transcript &
+#                                                                              type == "transcript")))
+# per_representative_transcript_exon_gr <- gr_refactor_seqs(dt2gr(genes_of_interest %>%
+#                                                                   dplyr::filter(transcript_id %in% representative_transcript &
+#                                                                                   type == "exon")))
+# per_representative_transcript_utr_gr <- gr_refactor_seqs(dt2gr(genes_of_interest %>%
+#                                                                  dplyr::filter(transcript_id %in% representative_transcript &
+#                                                                                  type %in% c("five_prime_utr","three_prime_utr"))))
+#
+# # Now build the CDS for each representative transcript per gene
+# # subtract out 5' UTR and 3' UTR
+# per_representative_transcript_cds <- data.table()
+# for(i in 1:n_distinct(per_representative_transcript_utr_gr$gene_name)) {
+#   per_representative_transcript_cds <- rrbind(per_representative_transcript_cds,
+#                                               gr2dt(gr.setdiff(query = per_representative_transcript_exon_gr %Q% (gene_name == unique(per_representative_transcript_utr_gr$gene_name)[i]),
+#                                                                subject = per_representative_transcript_utr_gr %Q% (gene_name == unique(per_representative_transcript_utr_gr$gene_name)[i]),
+#                                                                ignore.strand = T)))
+# }
+#
+# # Need to add in the set of genes that do not have any UTR to the CDS segments
+# per_representative_transcript_cds_gr <- gr_refactor_seqs(dt2gr(rrbind(per_representative_transcript_cds,
+#                                                                       gr2dt(per_representative_transcript_exon_gr %Q% (!gene_name %in% unique(per_representative_transcript_utr_gr$gene_name))))))
+#
+# # To find the intronic regions subtract the exonic regions from the transcript
+# per_representative_transcript_intron <- data.table()
+# for(i in 1:n_distinct(per_representative_transcript_exon_gr$gene_name)) {
+#   per_representative_transcript_intron <- rrbind(per_representative_transcript_intron,
+#                                                  gr2dt(gr.setdiff(query = per_representative_transcript_gr %Q% (gene_name == unique(per_representative_transcript_exon_gr$gene_name)[i]),
+#                                                                   subject = per_representative_transcript_exon_gr %Q% (gene_name == unique(per_representative_transcript_exon_gr$gene_name)[i]),
+#                                                                   ignore.strand = T)))
+#   if(i %% 1000 == 0) {
+#     message(paste0(i, " done ..."))
+#   }
+# }
+#
+# # Replace the type designation to intron then convert to GR obj
+# per_representative_transcript_intron$type <- "intron"
+# per_representative_transcript_intron_gr <- gr_refactor_seqs(dt2gr(per_representative_transcript_intron))
+#
+# # The final complete gene body set is the CDS + UTR + intron
+# complete_gene_body_gr <- gr_refactor_seqs(grbind(per_representative_transcript_cds_gr,
+#                                                  per_representative_transcript_intron_gr,
+#                                                  per_representative_transcript_utr_gr))
+# # Convert to DT to build the final GB DT
+# complete_gene_body <- gr2dt(complete_gene_body_gr)
+#
+# # Final GDT / GGR
+# # GRCh38 coordinates in GR obj format (seqnames, start, end, strand)
+# # Genomic context of the gene body segment (type)
+# # Prioritize gene annotations by gene name (gene_name,gene_id,gene_biotype,gene_source,transcript_id,transcript_name)
+# # Some additional classifications for plotting (orientation,coding_v_noncoding,exonic_v_intronic)
+# final_gene_dt <- complete_gene_body %>%
+#   dplyr::select(seqnames,start,end,type,gene_name,gene_id,gene_biotype,gene_source,transcript_id,transcript_name,exon_number,tag) %>%
+#   dplyr::left_join(y = gr2dt(per_representative_transcript_gr) %>% dplyr::select(transcript_id,strand),
+#                    by = "transcript_id") %>%
+#   dplyr::mutate("coding_v_noncoding" = case_when(type == "exon" ~ "coding",
+#                                                  type != "exon" ~ "non_coding"),
+#                 "exonic_v_intronic" = case_when(type %in% c("exon","five_prime_utr","three_prime_utr") ~ "exonic",
+#                                                 type == "intron" ~ "intronic"),
+#                 "orientation" = case_when(strand == "+" ~ 1,
+#                                           strand == "-" ~ 0)) %>%
+#   dplyr::rename("segment" = type) %>%
+#   dplyr::select(seqnames,start,end,strand,segment,
+#                 gene_name,gene_id,gene_biotype,
+#                 gene_source,transcript_id,transcript_name,exon_number,tag,
+#                 orientation,coding_v_noncoding,exonic_v_intronic)
+
+# final_gene_gr <- gr_refactor_seqs(dt2gr(final_gene_dt))
+
+# Don't rerun the code snippet but simply load the data here
+gene_body_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "gene_body.Ensembl_v108.hg38.bed.gz", package = "devgru"),
+                                      has_header = T)
+# Export for usage
+usethis::use_data(gene_body_hg38, internal = FALSE, overwrite = TRUE)
+
+
+#
+#
+# }}}}------->>> DESeq2 Differential Gene Expression Demo
+#
+#
+
+# Raw RNA-seq data for the human myeloma cell lines (HMCLs) RPMI8226 and U266
+# were obtained from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE87585
+
+# The data was processed using the following workflow
+# https://igordot.github.io/sns/routes/rna-star.html
+#   - Trim adapters and low quality bases (Trimmomatic).
+#   - Align to the reference genome (STAR).
+#   - Align to other species and common contaminants (fastq_screen).
+#   - Generate normalized genome browser tracks.
+#   - Determine the distribution of the bases within the transcripts and 5’/3’ biases (Picard).
+#   - Determine if the library is stranded and the strand orientation.
+#   - Generate genes-samples counts matrix (featureCounts)
+
+hmcl_counts_demo_dt_hg38 <- data.table::fread(file = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"))
+
+hmcl_conditions_demo_dt_hg38 <- data.table::fread(file = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"))
+
+# Export for usage
+usethis::use_data(hmcl_counts_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
+usethis::use_data(hmcl_conditions_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
+
+
+
+
+#
+#
+# }}}}------->>> My Color Pal
+#
+#
+
+devgru_pal <- c("#183e70","#448bca","#b5b2d9","#e01183","#fdbe3a","#833894",
+                "#149ba7","#eb1d25","#006748","#fce200","#191970","#EEA9B8")
+
+
+
+

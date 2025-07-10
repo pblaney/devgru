@@ -66,6 +66,8 @@
 #' @import pio
 #' @import DESeq2
 #' @import fgsea
+#' @import R.utils
+#' @import fishHook
 
 #' @importFrom pak pkg_install
 #' @importFrom librarian shelf
@@ -87,8 +89,8 @@
 #' @importFrom fs path_package
 #' @importFrom ggpie ggpie
 #' @importFrom tibble column_to_rownames
-#' @importFrom DNAcopy CNA smooth.CNA segment
 #' @importFrom SummarizedExperiment colData
+#' @importFrom DNAcopy CNA smooth.CNA segment
 #' @importFrom ggrepel geom_text_repel
 #' @importFrom tidyr drop_na
 #' @importFrom BiocParallel MulticoreParam
@@ -967,11 +969,29 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
                                 maploc = position_per_chrom,
                                 data.type = 'logratio')
 
-  cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(cna_per_chrom),
+  # For improved smoothing in output dryclean-based profile
+  # # smooth.DNA call
+  # increase smooth.region size 10 ==> 25
+  # decrease outlier.SD.scale threshold for identifying outliers 4 ==> 3.5
+  # decrease smooth.SD.scale threshold 2 ==> 1.75
+  # # segment call
+  # increase min.width to account for small bins of dryclean 2 ==> 5
+  # increase kmax 25 ==> 40
+  # increase nmin 200 ==> 250
+  # added undo.splits ==> sdundo
+  # added undo.SD ==>
+  cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(x = cna_per_chrom,
+                                                                         smooth.region = 25,
+                                                                         outlier.SD.scale = 3.5,
+                                                                         smooth.SD.scale = 1.75),
                                                  alpha = 1e-5,
+                                                 min.width = 5,
+                                                 kmax = 40,
+                                                 nmin = 250,
                                                  undo.splits = "sdundo",
                                                  undo.SD = 3,
-                                                 verbose = FALSE)
+                                                 verbose = 0)
+
   cna_segmentation_per_chrom_dt <- data.table::as.data.table(cna_segmentation_per_chrom$output)
   cna_segmentation_per_chrom_dt$ID <- sample_id
 
@@ -1053,7 +1073,7 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random
   chrom_iter_list <- gtools::mixedsort(unique(seqnames_nona))
 
   # Parallel execution of CBS per chromosome and merging to single DT object
-  final_cbs_segmentation <- chrompar(par_function = get_cbs_per_chromosome, par_chromosomes = chrom_iter_list, par_threads = cpus,
+  final_cbs_segmentation <- chrompar(par_function = get_cbs_per_chromosome, par_chromosomes = chrom_iter_list, par_cpus = cpus,
                                      seqnames_nona, foreground_cov_nona, start_nona, sample_id)
 
   # Return the DT of CBS output for easy downstream use
@@ -2271,106 +2291,6 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
     paint::paint(hq_muts)
     return(hq_muts)
   }
-}
-
-
-#' @name get_allele_counts
-#' @title Read in a BAM file, collect read counts for alleles at set of mutation loci using alleleCounter, and convert to data.table object
-#'
-#' @description
-#' Wrapper command to use alleleCounter to read in a BAM file and count all reads supporting each possible allele at set of mutation loci, then convert it to a data.table object with refactored seq details.
-#' The process will be split across each chromosome and then merged for the final output.
-#' Expects the first column to be chromosome name, and 3 other columns to exist in the mutation loci file: pos/start/end, ref/REF/Reference_Allele, alt/ALT/Tumor_Seq_Allele2.
-#'
-#' @param bam_file_path Path to BAM file
-#' @param mut_loci_obj Mutation loci file in data.table or GRanges format, required columns: chrom, pos, ref, alt
-#' @param min_base_qual Minimum base quality required for a read to be counted, default: 20
-#' @param min_map_qual Minimum mapping quality required for a read to be counted, default: 35
-#' @param threads Number of threads to use for parallel execution, default: 1
-#'
-#' @returns data.table object with the columns: #CHR, POS, Count_A, Count_C, Count_G, Count_T, Good_depth
-#' @export
-get_allele_counts = function(bam_file_path, mut_loci_obj, min_base_qual = 20, min_map_qual = 35, threads = 1) {
-
-  # Set parallel cores parameter
-  message("Setting parallel cores to ", threads, " ...")
-  doParallel::registerDoParallel(cores = threads)
-
-  # First, check if BAM and index exist at the path given
-  if(!file.exists(bam_file_path)) {
-    stop(message = "\nInput BAM does not exist at the path given")
-  }
-
-  if(!file.exists(paste0(bam_file_path, ".bai")) & !file.exists(stringr::str_replace(string = bam_file_path, pattern = "\\.bam", replacement ="\\.bai"))) {
-    stop(message = "\nInput BAM .bai index does not at the path given")
-  }
-
-  # Second, check the mutation loci object. If data.table, continue on. If not, convert
-  if(!"data.table" %in% class(mut_loci_obj) & "GRanges" %in% class(mut_loci_obj)) {
-    mut_loci <- gUtils::gr2dt(mut_loci_obj)
-
-  } else if("data.table" %in% class(mut_loci_obj)) {
-    mut_loci <- mut_loci_obj
-
-  } else {
-    # Problem if input VCF object is not correct class
-    stop(message = "\nInput mutation loci object needs to be either data.table or GRanges class")
-  }
-
-  # Finally, check if alleleCounter is on the path
-  if(class(system("alleleCounter -v", intern = TRUE)) != "character") {
-    stop(message = "\nCannot find alleleCounter binary executable on path")
-  }
-
-  # Begin foreach construct to parallelize the alleleCounter command per chromosome and then stitch the results together in a GRanges object
-  chrom_iter_list <- as.character(unique(mut_loci$seqnames))
-  possible_col_names <- c("seqnames", "chrom", "start", "pos", "POS", "ref", "REF", "Reference_Allele", "alt", "ALT", "Tumor_Seq_Allele2")
-
-  final_allele_counts <- foreach::foreach(x = 1:length(chrom_iter_list), .combine = rrbind, .packages = "gUtils") %dopar% {
-
-    # Grab the mutation loci per chromosome and prep for use in alleleCounter
-    which_col_names <- which(possible_col_names %in% colnames(mut_loci))
-    mut_loci_per_chrom_dt <- mut_loci %>%
-      dplyr::filter(seqnames == chrom_iter_list[x]) %>%
-      dplyr::select(possible_col_names[which_col_names])
-
-    # Now create temporary loci and output file that will be read in as an intermediate file
-    temp_alleleCounter_outfile <- tempfile(pattern = stringr::str_remove(string = basename(bam_file_path), pattern = "\\.*\\.bam"),
-                                           fileext = paste0(".temp.alleleCounter.", chrom_iter_list[x], ".out.txt"))
-
-    temp_alleleCounter_locifile <- tempfile(pattern = stringr::str_remove(string = basename(bam_file_path), pattern = "\\.*\\.bam"),
-                                            fileext = paste0(".temp.alleleCounter.", chrom_iter_list[x], ".loci.txt"))
-    data.table::fwrite(x = mut_loci_per_chrom_dt,
-                       file =  temp_alleleCounter_locifile,
-                       row.names = FALSE,
-                       col.names = FALSE,
-                       sep = "\t",
-                       quote = FALSE)
-
-    # Execute command
-    alleleCounter_exe <- paste("alleleCounter",
-                               "-b", bam_file_path,
-                               "-o", temp_alleleCounter_outfile,
-                               "-l", temp_alleleCounter_locifile,
-                               "-m", min_base_qual,
-                               "-q", min_map_qual)
-    system(command = alleleCounter_exe, wait = TRUE)
-
-    # After execution of alleleCounter command, read in the temp output file
-    system(command = "sleep 7", wait = TRUE)
-    read_counts <- data.table::fread(file = temp_alleleCounter_outfile,
-                                     sep = "\t")
-
-    # Unlink temps
-    unlink(temp_alleleCounter_outfile)
-    unlink(temp_alleleCounter_locifile)
-
-    # Return output of the foreach loops, each GR obj will be concatenated
-    read_counts
-  }
-
-  # Return combined alleleCount output
-  return(final_allele_counts)
 }
 
 

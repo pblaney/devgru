@@ -2,12 +2,12 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{get_corrected_cnv_profile}
 \alias{get_corrected_cnv_profile}
-\title{Read in CNV profile DT of various flavors and extract a corrected profile}
+\title{Read in CNV profile data.table of various flavors and extract a corrected profile}
 \usage{
 get_corrected_cnv_profile(cnv_obj, caller, sample_id = NULL)
 }
 \arguments{
-\item{cnv_obj}{CNV file in data.table or GRanges format}
+\item{cnv_obj}{CNV file in data.table or GenomicRanges format}
 
 \item{caller}{Name of caller that generated input CNV to be converted, supported: Battenberg and FACETS}
 
@@ -17,7 +17,7 @@ get_corrected_cnv_profile(cnv_obj, caller, sample_id = NULL)
 data.table object with corrected CNV segments
 }
 \description{
-Given a data.table or GRanges CNV object, extract the corrected CNV profile.
+Given a data.table or GenomicRanges CNV object, extract the corrected CNV profile.
 Any segment with a non-rounded value within 0.2 of the next integer value is rounded to that value.
 The output will data.table will contain 6 columns: sample, seqnames, start, end, total, minor
 The \code{sample} is either user-provided or row count placeholder

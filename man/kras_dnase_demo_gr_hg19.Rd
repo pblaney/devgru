@@ -3,7 +3,7 @@
 \docType{data}
 \name{kras_dnase_demo_gr_hg19}
 \alias{kras_dnase_demo_gr_hg19}
-\title{DNAaseI hypersensitivity sites for KRAS on hg19 as GRanges}
+\title{DNAaseI hypersensitivity sites for KRAS on hg19 as GenomicRanges}
 \format{
 \code{GRanges}
 }

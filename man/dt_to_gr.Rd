@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{dt_to_gr}
 \alias{dt_to_gr}
-\title{Convert data.table to GRanges Object}
+\title{Convert data.table to GenomicRanges Object}
 \usage{
 dt_to_gr(input_dt)
 }
@@ -14,12 +14,12 @@ that describe the genomic coordinates of the range}
 GenomicRanges object with input columns and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Single command to smartly convert a data.table object to a GRanges object by
+Single command to smartly convert a data.table object to a GenomicRanges object by
 wrapping \code{gr_refactor_seqs()} around the \code{gUtils::dt2gr()} to avoid seqinfo conflicts
 and apply proper sorting.
 }
 \examples{
-# Converting from data.table to GRanges can be easily done with gUtils::dt2gr()
+# Converting from data.table to GenomicRanges can be easily done with gUtils::dt2gr()
 # however this single command conversion leaves some loose ends with the seqinfo
 
 # Look at the original data.table

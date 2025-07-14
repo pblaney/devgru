@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{get_genes_shortcut}
 \alias{get_genes_shortcut}
-\title{Shortcut to get only protein coding genes from GTF file and convert to GRanges object}
+\title{Shortcut to get only protein coding genes from GTF file and convert to GenomicRanges object}
 \usage{
 get_genes_shortcut(gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
 }
@@ -15,6 +15,6 @@ get_genes_shortcut(gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
 GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a GTF file, subset to protein coding genes, and convert it to a GRanges object with refactored seq details.
+Read in a GTF file, subset to protein coding genes, and convert it to a GenomicRanges object with refactored seq details.
 The GTF file can be either zipped or unzipped.
 }

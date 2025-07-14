@@ -50,14 +50,4 @@ expected output is either a data.table or GenomicRanges object
 # par_cpus = threads,
 # seqnames_nona, foreground_cov_nona, start_nona, sample_id)
 
-# Run as part of the `get_segmentation_gap_imputation()` workflow using
-# `get_imputed_gaps_per_chromosome()` as the par_function
-# final_imputed_gaps <- chrompar(
-# par_function = get_imputed_gaps_per_chromosome,
-# par_chromosomes = chrom_iter_list,
-# par_cpus = threads,
-# par_packages = c("gUtils"),
-# dryclean_segmentation_whitelist_gapless, gaps_to_impute, threshold_for_imputation,
-# sbv_bps, sample_id, make_plots, path_for_plots)
-
 }

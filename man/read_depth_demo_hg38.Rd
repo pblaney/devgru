@@ -3,7 +3,7 @@
 \docType{data}
 \name{read_depth_demo_hg38}
 \alias{read_depth_demo_hg38}
-\title{dryclean-fragCounter read depth profile on hg38 as GRanges}
+\title{dryclean-fragCounter read depth profile on hg38 as GenomicRanges}
 \format{
 \code{GRanges}
 }

@@ -2,21 +2,21 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{gr_sanitycheck}
 \alias{gr_sanitycheck}
-\title{Check if input is a GRanges object, plus optional sanity check of column names}
+\title{Check if input is a GenomicRanges object, plus optional sanity check of column names}
 \usage{
 gr_sanitycheck(query_gr, expected_cols = NULL)
 }
 \arguments{
-\item{query_gr}{Suspected GRanges-like object to test}
+\item{query_gr}{Suspected GenomicRanges-like object to test}
 
 \item{expected_cols}{Vector of character strings to check for consistency in
-columns of query GRanges, default: NULL}
+columns of query GenomicRanges, default: NULL}
 }
 \value{
 TRUE or FALSE
 }
 \description{
-Simple check if the input is a GRanges object, plus includes an additional functionality
+Simple check if the input is a GenomicRanges object, plus includes an additional functionality
 to perform a smart, transparent sanity check of expected column names.
 }
 \examples{

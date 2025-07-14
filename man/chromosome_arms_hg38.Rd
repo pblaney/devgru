@@ -3,7 +3,7 @@
 \docType{data}
 \name{chromosome_arms_hg38}
 \alias{chromosome_arms_hg38}
-\title{Genomic coordinates of each chromosome arm on hg38 as GRanges}
+\title{Genomic coordinates of each chromosome arm on hg38 as GenomicRanges}
 \format{
 \code{GRanges}
 }

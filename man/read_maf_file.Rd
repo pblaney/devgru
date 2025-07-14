@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_maf_file}
 \alias{read_maf_file}
-\title{Read MAF file and convert to GRanges object}
+\title{Read MAF file and convert to GenomicRanges object}
 \usage{
 read_maf_file(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths())
 }
@@ -17,7 +17,7 @@ read_maf_file(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths())
 GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a MAF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+Read in a MAF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
 The MAF file can be either zipped or unzipped.
 For more specific MAFtools operations, see \code{maftools::read.maf()}
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_bed_file}
 \alias{read_bed_file}
-\title{Read in a BED file, with or without header, and convert to GRanges object}
+\title{Read in a BED file, with or without header, and convert to GenomicRanges object}
 \usage{
 read_bed_file(
   bed_file_path,
@@ -27,7 +27,7 @@ read_bed_file(
 GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a BED file and convert it to a GRanges object with refactored seq details.
+Read in a BED file and convert it to a GenomicRanges object with refactored seq details.
 Expects the first 3 columns as chromosome, start, end; However column names are not necessary
 The BED file can be either zipped or unzipped.
 }

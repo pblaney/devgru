@@ -96,6 +96,8 @@
 #' @importFrom BiocParallel MulticoreParam
 #' @importFrom easypar run
 #' @importFrom gtools mixedsort
+#' @importFrom rpart rpart
+#' @importFrom gGnome jJ
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -106,7 +108,10 @@ alignment_group=fraction=med_reads=median_count=tumor_normal=ALT=CALLER=REF=SAMP
 total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF_TUMOR=DP_TUMOR=NULL
 FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=gene_body_hg38=gene_id=condition=expr_mean=NULL
 normalized_per_gene_mean_expr=filtered_vs_survived=group_means=rn=gene=log2_fc=neg_log10_p_adj=NULL
-p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=NULL
+p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=ID=arm=num.mark=query.id=subject.id=NULL
+tile.id=NULL
+
+chromosome_arms_hg38=exclusion_regions_hg38=NULL
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -141,7 +146,7 @@ p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=NULL
 #' @format \code{GRanges}
 NULL
 
-#' DNAaseI hypersensitivity sites for KRAS on hg19 as GRanges
+#' DNAaseI hypersensitivity sites for KRAS on hg19 as GenomicRanges
 #'
 #' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
 #' hg19, subset to the KRAS locus with 1000 bp flank.
@@ -152,7 +157,7 @@ NULL
 #' @format \code{GRanges}
 NULL
 
-#' DNAaseI hypersensitivity sites for KRAS on hg38 as GRanges
+#' DNAaseI hypersensitivity sites for KRAS on hg38 as GenomicRanges
 #'
 #' DNAaseI hypersensitivity sites in the H562 cell line from UCSC Table Browser
 #' hg38 liftover, subset to the KRAS locus with 1000 bp flank.
@@ -185,7 +190,7 @@ NULL
 #' @format \code{data.table}
 NULL
 
-#' Collection of genomic regions to exclude from analysis on hg38 as GRanges
+#' Collection of genomic regions to exclude from analysis on hg38 as GenomicRanges
 #'
 #' A convenient single collection of genomic regions suggested to exclude from
 #' analysis due to mappability issues, enrichment of duplicated regions,
@@ -201,7 +206,7 @@ NULL
 #' @format \code{GRanges}
 NULL
 
-#' Genomic coordinates of each chromosome arm on hg38 as GRanges
+#' Genomic coordinates of each chromosome arm on hg38 as GenomicRanges
 #'
 #' A convenient single collection of the genomic span of each chromosome arm.
 #' The span is described as:
@@ -218,7 +223,7 @@ NULL
 #' @format \code{GRanges}
 NULL
 
-#' dryclean-fragCounter read depth profile on hg38 as GRanges
+#' dryclean-fragCounter read depth profile on hg38 as GenomicRanges
 #'
 #' A slice of data from a `dryclean` adjusted `fragCounter` read depth profile
 #' of a tumor sample.
@@ -233,7 +238,7 @@ NULL
 #' @format \code{GRanges}
 NULL
 
-#' Gene body segments from Ensemble v108 on hg38 as GRanges
+#' Gene body segments from Ensemble v108 on hg38 as GenomicRanges
 #'
 #' This genomic ranges contains the gene body segments (UTRs, Exons, Introns)
 #' for a single-transcript representation of Ensembl v108 genes on hg38.
@@ -491,10 +496,10 @@ kit_loadout <- function(update_kit = F) {
 #
 
 #' @name gr_refactor_seqs
-#' @title Refactor seqinfo, seqnames, seqlengths, seqlevels of GRanges object for easy harmony
+#' @title Refactor seqinfo, seqnames, seqlengths, seqlevels of GenomicRanges object for easy harmony
 #'
 #' @description
-#' Single command to refactor all seq details of a GRanges object to easily harmonize with any other GRanges object.
+#' Single command to refactor all seq details of a GenomicRanges object to easily harmonize with any other GenomicRanges object.
 #' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, see `gUtils::hg_seqlengths()`
 #' Users can adjust this using the `new_levels` parameter.
 #'
@@ -550,10 +555,10 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 }
 
 #' @name dt_to_gr
-#' @title Convert data.table to GRanges Object
+#' @title Convert data.table to GenomicRanges Object
 #'
 #' @description
-#' Single command to smartly convert a data.table object to a GRanges object by
+#' Single command to smartly convert a data.table object to a GenomicRanges object by
 #' wrapping `gr_refactor_seqs()` around the `gUtils::dt2gr()` to avoid seqinfo conflicts
 #' and apply proper sorting.
 #'
@@ -561,7 +566,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #'  that describe the genomic coordinates of the range
 #'
 #' @examples
-#' # Converting from data.table to GRanges can be easily done with gUtils::dt2gr()
+#' # Converting from data.table to GenomicRanges can be easily done with gUtils::dt2gr()
 #' # however this single command conversion leaves some loose ends with the seqinfo
 #'
 #' # Look at the original data.table
@@ -587,15 +592,15 @@ dt_to_gr <- function(input_dt) {
 }
 
 #' @name gr_sanitycheck
-#' @title Check if input is a GRanges object, plus optional sanity check of column names
+#' @title Check if input is a GenomicRanges object, plus optional sanity check of column names
 #'
 #' @description
-#' Simple check if the input is a GRanges object, plus includes an additional functionality
+#' Simple check if the input is a GenomicRanges object, plus includes an additional functionality
 #' to perform a smart, transparent sanity check of expected column names.
 #'
-#' @param query_gr Suspected GRanges-like object to test
+#' @param query_gr Suspected GenomicRanges-like object to test
 #' @param expected_cols Vector of character strings to check for consistency in
-#'  columns of query GRanges, default: NULL
+#'  columns of query GenomicRanges, default: NULL
 #'
 #' @examples
 #' # Not a GR
@@ -613,7 +618,7 @@ dt_to_gr <- function(input_dt) {
 #' @export
 gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
   # Generic check if query is a GR obj
-  # No constrait on expected number of columns
+  # No constraint on expected number of columns
   if(is.null(expected_cols)) {
     if(inherits(query_gr, "GenomicRanges")) {
       return(TRUE)
@@ -683,7 +688,7 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
 #' @export
 dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
   # Generic check if query is a DT obj
-  # No constrait on expected number of columns
+  # No constraint on expected number of columns
   if(is.null(expected_cols)) {
     if(inherits(query_dt, "data.table")) {
       return(TRUE)
@@ -727,10 +732,10 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 # TODO: add more intelligent setting of boundaries by storing the values of the
 #       chromosome arms and finding these boundaries for each chromosome and arm in a GR
 #' @name gr_flank
-#' @title Precise addition of flanking to GRanges with boundary-aware options
+#' @title Precise addition of flanking to GenomicRanges with boundary-aware options
 #'
 #' @description
-#' Precise addition of flanks to the start and/or end of a GRanges object with the option
+#' Precise addition of flanks to the start and/or end of a GenomicRanges object with the option
 #' of setting a boundary for the flanks, helpful to account for boundaries like chromosome arms.
 #'
 #' Note, the boundaries are compared directly to the new flanked start/end and do not currently
@@ -739,12 +744,12 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #'
 #' If the flank exceeds the boundary, the new flanked start/end will set at the boundary.
 #'
-#' @param input_gr GRanges object to add flanks to
+#' @param input_gr GenomicRanges object to add flanks to
 #' @param start_flank Amount of flank (in bp) to be added to the start of the ranges, default: NULL
 #' @param end_flank Amount of flank (in bp) to be added to the end of the ranges, default: NULL
-#' @param start_flank_boundary The genomic coordinate the start of the flanked GRanges should
+#' @param start_flank_boundary The genomic coordinate the start of the flanked GenomicRanges should
 #'  to not exceed, default: NULL
-#' @param end_flank_boundary The genomic coordinate the end of the flanked GRanges should
+#' @param end_flank_boundary The genomic coordinate the end of the flanked GenomicRanges should
 #'  to not exceed, default: NULL
 #'
 #' @examples
@@ -826,7 +831,40 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
   return(flanked_gr)
 }
 
+#' @name gr_to_seg
+#' @title Convert segmentation GenomicRanges object to a data.table with standardized columns and format
+#'
+#' @description
+#' Converts a segmentation GenomicRanges object into a data.table object then extracts the
+#' appropriate columns and renames the columns to match the expected format.
+#'
+#' The input GenomicRanges is typically generated from `get_dryclean_segmentation()` workflow
+#' or other `DNAcopy` CBS algorithm runs.
+#'
+#' @param input_gr Segmentation GenomicRanges object to convert to data.table
+#' @param exp_colnames Expected column names for CBS segmentation input GenomicRanges
+#'
+#' @examples
+#' # Convert output from `get_dryclean_segmentation()` workflow
+#' # dryclean_seg <- get_dryclean_segmentation(
+#' # path_to_dryclean_profile = "read_depth_demo_hg38.rds",
+#' # cpus = 4)
+#'
+#' # gr_to_seg(dryclean_seg)
+#'
+#' @returns data.table
+#' @export
+gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
+  # Sanity check of columns in input GR
+  if(!gr_sanitycheck(query_gr = input_gr, expected_cols = exp_colnames)) {
+    stop(cli::cli_alert_danger("Check input"))
+  }
 
+  seg <- gUtils::gr2dt(input_gr) %>%
+    dplyr::select(ID,seqnames,start,end,num.mark,seg.mean) %>%
+    dplyr::rename("chrom" = seqnames, "loc.start" = start, "loc.end" = end)
+  return(seg)
+}
 
 
 
@@ -869,16 +907,6 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #' # par_chromosomes = chrom_iter_list,
 #' # par_cpus = threads,
 #' # seqnames_nona, foreground_cov_nona, start_nona, sample_id)
-#'
-#' # Run as part of the `get_segmentation_gap_imputation()` workflow using
-#' # `get_imputed_gaps_per_chromosome()` as the par_function
-#' # final_imputed_gaps <- chrompar(
-#' # par_function = get_imputed_gaps_per_chromosome,
-#' # par_chromosomes = chrom_iter_list,
-#' # par_cpus = threads,
-#' # par_packages = c("gUtils"),
-#' # dryclean_segmentation_whitelist_gapless, gaps_to_impute, threshold_for_imputation,
-#' # sbv_bps, sample_id, make_plots, path_for_plots)
 #'
 #' @returns GenomicRanges object with properly sorted genomic coordinates
 #' @export
@@ -1084,9 +1112,319 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random
   return(final_cbs_segmentation)
 }
 
+#' @name get_imputed_gaps_per_chromosome
+#' @title Single chromosome run imputation of small, zero coverage gaps in CBS segmentation
+#'
+#' @description
+#' Run imputation of small, zero coverage gaps in CBS segmentation using partition regression
+#' of signal in neighborhood adjacent to the gap.
+#' The gaps are typically small, less than 500 bp on average and inter spaced among large
+#' segments of continuous, homogeneous signal. The gap signal is far less than expected
+#' for real deletions, even homozygous events
+#' Imputation greatly improves the foreground signal in downstream tools like JaBbA and GISTIC.
+#'
+#' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
+#' workflow. Also, see `chrompar()` for executing in parallel.
+#'
+#' @param chrom_for_imputation The chromosome to run gap imputation algorithm on
+#' @param gapless_segmentation_whitelist GenomicRanges object of segmentation after removing blacklist regions and gaps
+#' @param segmentation_gaps GenomicRanges object of gaps from the original segmentation
+#' @param threshold Threshold of segmentation signal to determine a gap, default: -4.95
+#' @param structural_variant_breakpoints GenomicRanges object of individual breakpoints from sample SVs
+#' @param sample_id Name of sample
+#' @param make_plots Generate diagnostic plots of imputation results? default: FALSE
+#' @param path_for_plots Path to directory to hold diagnostic plot small PNGs (~80 KB per plot)
+#'
+#' @returns data.table with gap imputed segmentation
+#' @export
+get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmentation_whitelist, segmentation_gaps, threshold = -4.95,
+                                            structural_variant_breakpoints = NULL, sample_id, make_plots = F, path_for_plots) {
+  # Function CLI
+  cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_imputation})}}")
 
+  # Grab chromosome specific data for run the partition regression imputation workflow
+  gapless_whitelist_seg_per_chrom <- gapless_segmentation_whitelist %Q% (seqnames == chrom_for_imputation)
+  gaps_per_chrom <- segmentation_gaps %Q% (seqnames == chrom_for_imputation)
+  cli::cli_text("{crayon::red(length(gaps_per_chrom))} {clisymbols::symbol$arrow_right} Gaps to be imputed on {crayon::green({chrom_for_imputation})}")
 
+  if(!is.null(structural_variant_breakpoints)) {
+    sv_bps_per_chrom <- structural_variant_breakpoints %Q% (seqnames == chrom_for_imputation)
+  }
 
+  # Read in the chromosome arms regions
+  #data(chromosome_arms_hg38, package = "devgru")
+  #chromosome_arms <- data(chromosome_arms_hg38, )
+
+  # Loop through the gaps, find the founder segments that will be used to impute the gaps
+  imputed_gaps_per_chrom <- data.table::data.table()
+  for(i in 1:length(gaps_per_chrom)) {
+    # For convenience, set the gap of interest
+    goi <- gaps_per_chrom[i]
+
+    # To ensure gaps will only be imputed using values from the same arm, check which arm the gap is located on
+    gap_arm <- gUtils::gr.findoverlaps(query = goi,
+                                       subject = chromosome_arms_hg38,
+                                       scol = "arm")
+    if(gap_arm$arm == "p") {
+      arm_boundaries <- c(GenomicRanges::start(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "p")),
+                          GenomicRanges::end(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "p")))
+    } else if(gap_arm$arm == "q") {
+      arm_boundaries <- c(GenomicRanges::start(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "q")),
+                          GenomicRanges::end(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "q")))
+    }
+
+    # Calculate the padding for each gap, total padding will be 1.5 the size of the gap
+    padding <- round(x = GenomicRanges::width(goi) * 1.5,
+                     digits = 0)
+
+    # Grab the neighborhood values around gap as the founder segments
+    founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
+                                                                start_flank =  padding / 2,
+                                                                end_flank = padding / 2,
+                                                                start_flank_boundary = arm_boundaries[1],
+                                                                end_flank_boundary = arm_boundaries[2]),
+                                               subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
+                                               scol = "seg.mean")
+
+    # Check here if the founder segment exists as expected, the padding could be too small and
+    # not provide neighborhood values. If so, increase the padding
+    while(length(founder_segment) == 0) {
+      # Increase padding
+      cli::cli_alert_info("Previous padding {crayon::red({padding})} bp on {crayon::green({chrom_for_imputation})} not large enough {clisymbols::symbol$arrow_right} Increasing by 3x {crayon::white(clisymbols::symbol$ellipsis)}")
+      padding <- round(x = padding * 3,
+                       digits = 0)
+      founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
+                                                                  start_flank =  padding / 2,
+                                                                  end_flank = padding / 2,
+                                                                  start_flank_boundary = arm_boundaries[1],
+                                                                  end_flank_boundary = arm_boundaries[2]),
+                                                 subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
+                                                 scol = "seg.mean")
+    }
+
+    # Tile the founder segment used for imputation and add the the corresponding seg.mean to each tile
+    partition_reg_data <- gUtils::gr.findoverlaps(query = gUtils::gr.tile(gr = founder_segment, width = 100),
+                                                  subject = founder_segment,
+                                                  scol = "seg.mean")
+    # Add label for diagnostic plotting
+    partition_reg_data$tile_type <- "founder"
+
+    # Fit the data with a partition regression
+    partition_reg_fit <- rpart::rpart(data = gUtils::gr2dt(partition_reg_data), formula = seg.mean ~ start)
+
+    # If SV BPs are provided, check for overlap here as they will be used to provide
+    # a more accurate location of segmentation jump
+    goi_sv_bp_overlap <- NULL
+    if(!is.null(structural_variant_breakpoints)) {
+      goi_sv_bp_overlap <- gUtils::gr.findoverlaps(query = goi,
+                                                   subject = sv_bps_per_chrom)
+    }
+
+    # SV BP workflow
+    # must check if there is an overlap, otherwise use the standard approach
+    if(!is.null(goi_sv_bp_overlap) & length(goi_sv_bp_overlap) > 0) {
+      # Break the original gap into disjointed segments using the SV breakpoints
+      new_goi <- gUtils::gr.breaks(bps = goi_sv_bp_overlap, query = goi)
+
+      # For this approach, the new gaps will not be tiled and will individually be fit predicted
+      imputed_sv_gaps <- GenomicRanges::GRanges()
+      for(j in 1:length(new_goi)) {
+        # Grab each SV gap
+        sv_gap <- new_goi[j]
+
+        sv_gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(sv_gap))
+
+        # Add the predicted seg.mean to the tiles
+        sv_gap$seg.mean <- as.numeric(sv_gap_rpart_pred)
+        sv_gap$tile_type <- paste0("imputed gap", j)
+
+        # Add each imputed SV gap to a set
+        imputed_sv_gaps <- gUtils::grbind(imputed_sv_gaps, sv_gap)
+      }
+
+      # Visualize the gap imputation with a diagnostic plot
+      if(make_plots == T) {
+        diagnostic_plot <- geom_gap_imputation(original_gap = goi,
+                                               imputed_gap_gr = gUtils::grbind(partition_reg_data, imputed_sv_gaps),
+                                               sv_bp = goi_sv_bp_overlap)
+        ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
+                        plot = diagnostic_plot,
+                        path = path_for_plots,
+                        width = 125,
+                        height = 75,
+                        units = "mm",
+                        device = "png")
+      }
+
+      # Final prep before adding the imputed gaps to the final imputed set
+      # Need to update the num.mark column to reflect it being a split of the original
+      imputed_sv_gaps_dt <- gUtils::gr2dt(imputed_sv_gaps) %>%
+        dplyr::rename("oldnum.mark" = num.mark) %>%
+        dplyr::mutate("num.mark" = goi$num.mark / length(imputed_sv_gaps)) %>%
+        dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
+
+      # Add to final set
+      imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
+                                               imputed_sv_gaps_dt)
+
+      # No SV BP workflow
+    } else {
+      # tile the gap segment to impute at intervals across the gap
+      tiled_gap <- gUtils::gr.tile(gr = gaps_per_chrom[i], width = 100)
+
+      # Use the fit partition regression to predict the values at each tile across the gap
+      gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
+
+      # Add the predicted seg.mean to the tiles
+      tiled_gap$seg.mean <- as.numeric(gap_rpart_pred)
+      # For plotting
+      tiled_gap$tile_type <- "imputed gap"
+
+      # Visualize the gap imputation with a diagnostic plot
+      if(make_plots == T & sum(GenomicRanges::width(goi)) > 25000) {
+        diagnostic_plot <- geom_gap_imputation(original_gap = goi,
+                                               imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
+        ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
+                        plot = diagnostic_plot,
+                        path = path_for_plots,
+                        width = 125,
+                        height = 75,
+                        units = "mm",
+                        device = "png")
+      }
+
+      # Final prep before adding the imputed gaps to the final imputed set
+      # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
+      imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "seg.mean")
+
+      # Convert imputed gaps to DT and make last adjustments below
+      # also needs sample ID
+      # num.mark, calculate by dividing the original num.mark but total new segments
+      # subject.id
+      imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
+        dplyr::mutate("ID" = sample_id,
+                      "num.mark" = goi$num.mark / length(imputed_tiled_gap)) %>%
+        dplyr::rename("subject.id" = tile.id) %>%
+        dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
+
+      # Add to final set
+      imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
+                                               imputed_tiled_gap_dt)
+    }
+  }
+
+  # Return the final imputed DT
+  return(imputed_gaps_per_chrom)
+}
+
+#' @name get_segmentation_gap_imputation
+#' @title Generate gap imputed segmentation from CBS output
+#'
+#' @description
+#' Given CBS segmentation with small, zero signal gaps, run neighbrohood-based partition
+#' regression gap imputation in a parallel manner to produce a gap imputed segmentation file
+#' that is provides cleaner foreground signal in JaBbA and GISTIC.
+#'
+#' @param path_to_dryclean_segmentation Path to dryclean CBS segmentation
+#' @param threshold_for_imputation Threshold for determining gaps for imputation, default: -4.95
+#' @param path_to_structural_variants Path to structural variants called for sample, optional
+#' @param cpus Number of CPUs to use for parallel execution, default: 1
+#' @param make_diagnostic_plots Generate diagnostic plots for each imputed gap, default: FALSE
+#' @param path_to_diagnostic_plots_dir Path to directory to place diagnostic plot PNGs
+#' @param exp_colnames Expected column names for segmentation input data.table
+#' @param verbose Output CLI during workflow, default: TRUE
+#'
+#' @examples
+#' # Execute the full workflow
+#' # full_imp_test <- get_segmentation_gap_imputation(
+#' # path_to_dryclean_segmentation = "sample.dryclean.fragcounter.cbs.seg",
+#' # threshold_for_imputation = -4.95,
+#' # path_to_structural_variants = "sample.hq.union.consensus.somatic.sv.bedpe",
+#' # cpus = 2,
+#' # make_diagnostic_plots = T,
+#' # path_to_diagnostic_plots_dir = "impute_qc_plots/")
+#'
+#' @returns GenomicRanges object with gap imputed segmentation
+#' @export
+get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, threshold_for_imputation = -4.95,
+                                            path_to_structural_variants = NULL, cpus = 1, make_diagnostic_plots = FALSE,
+                                            path_to_diagnostic_plots_dir = NULL, exp_colnames = c("ID","chrom","loc.start","loc.end","num.mark","seg.mean"),
+                                            verbose = T) {
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_segmentation_gap_imputation",
+                       path_to_dryclean_segmentation, threshold_for_imputation, path_to_structural_variants, cpus, exp_colnames)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_segmentation_gap_imputation")
+
+  # Read in dryclean CBS segmentation
+  cli::cli_alert_info("Reading {.file {path_to_dryclean_segmentation}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_segmentation, pattern = "\\..*dryclean.*seg"))
+  dryclean_segmentation <- data.table::fread(file = path_to_dryclean_segmentation,
+                                             sep = "\t",
+                                             header = T)
+  # Check if input if dryclean CBS segmentation DT obj
+  if(dt_sanitycheck(query_dt = dryclean_segmentation, expected_cols = exp_colnames)) {
+    cli::cli_alert_success("Success")
+  } else {
+    stop(cli::cli_alert_danger("Check input"))
+  }
+
+  if(!is.null(path_to_structural_variants) & file.exists(path_to_structural_variants)) {
+    structural_variants <- gGnome::jJ(rafile = path_to_structural_variants,
+                                      chr.convert = F,
+                                      hg = "hg38",
+                                      keep.features = T,
+                                      seqlengths = gUtils::hg_seqlengths()[1:24])
+    # convert to BPs
+    sbv_bps <- gUtils::grl.unlist(structural_variants$grl)
+  } else {
+    stop(cli::cli_alert_danger("Could not locate {.file {path_to_structural_variants}}, check path"))
+  }
+
+  # Read in the exclusion regions
+  #data(exclusion_regions_hg38, package = "devgru")
+  #exclusion_regions <- exclusion_regions_hg38
+
+  # Get the whitelist regions
+  dryclean_segmentation_whitelist <- gUtils::gr.setdiff(query = dt_to_gr(dryclean_segmentation),
+                                                        subject = exclusion_regions_hg38)
+
+  # Extract the gaps from the whitelist regions
+  gaps_to_impute <- dryclean_segmentation_whitelist %Q% (seg.mean <= threshold_for_imputation)
+
+  # Get the gapless whitelist regions
+  dryclean_segmentation_whitelist_gapless <- gUtils::gr.setdiff(query = dryclean_segmentation_whitelist,
+                                                                subject = gaps_to_impute)
+
+  # Get the list of chromosomes to iterate over
+  chrom_iter_list <- gtools::mixedsort(unique(as.character(GenomeInfoDb::seqnames(gaps_to_impute))))
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Partition Regression imputation with rpart v", utils::packageVersion("rpart")))
+  cat("\n")
+
+  # Parallel execution of partition regression per chromosome and merging to single GR object
+  final_imputed_gaps <- chrompar(par_function = get_imputed_gaps_per_chromosome, par_chromosomes = chrom_iter_list,
+                                 par_cpus = cpus, par_packages = c("gUtils", "devgru"),
+                                 dryclean_segmentation_whitelist_gapless, gaps_to_impute, threshold_for_imputation,
+                                 sbv_bps, sample_id, make_diagnostic_plots, path_to_diagnostic_plots_dir)
+
+  # Combine the imputed gaps with the whitelist gapless regions to make final set
+  final_imputed_segmentation <- GenomicRanges::sort(gUtils::grbind(dryclean_segmentation_whitelist_gapless,
+                                                                   final_imputed_gaps))
+
+  # Return the GR of imputed gaps output for easy downstream use
+  cli::cli_alert_success("Imputation finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_segmentation_gap_imputation",
+                    stopwatch_start = process_start)
+
+  return(final_imputed_segmentation)
+}
 
 
 
@@ -1960,11 +2298,11 @@ get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_di
 #' @title Quick pull or explicitly calculate the VAF for mutation records of various flavors
 #'
 #' @description
-#' Given a data.table or GRanges VCF object, quickly extract or explicitly calculate the VAF for all mutations.
+#' Given a data.table or GenomicRanges VCF object, quickly extract or explicitly calculate the VAF for all mutations.
 #' For clarity, the read support for the VAF will be extracted as well.
 #' Currently supports somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 #'
-#' @param vcf_obj VCF file in data.table or GRanges format
+#' @param vcf_obj VCF file in data.table or GenomicRanges format
 #' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman
 #' @param mut_type Type of mutations within VCF, supported: snv, indel
 #'
@@ -2295,16 +2633,16 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
 
 
 #' @name get_corrected_cnv_profile
-#' @title Read in CNV profile DT of various flavors and extract a corrected profile
+#' @title Read in CNV profile data.table of various flavors and extract a corrected profile
 #'
 #' @description
-#' Given a data.table or GRanges CNV object, extract the corrected CNV profile.
+#' Given a data.table or GenomicRanges CNV object, extract the corrected CNV profile.
 #' Any segment with a non-rounded value within 0.2 of the next integer value is rounded to that value.
 #' The output will data.table will contain 6 columns: sample, seqnames, start, end, total, minor
 #' The `sample` is either user-provided or row count placeholder
 #' Currently supports CNV calls from Battenberg and FACETS
 #'
-#' @param cnv_obj CNV file in data.table or GRanges format
+#' @param cnv_obj CNV file in data.table or GenomicRanges format
 #' @param caller Name of caller that generated input CNV to be converted, supported: Battenberg and FACETS
 #' @param sample_id Unique identifier to add to output, default: NULL
 #'
@@ -2420,10 +2758,10 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 #
 
 #' @name read_gtf_file
-#' @title Read in a GTF file, such as one from Ensembl, and convert to GRanges object
+#' @title Read in a GTF file, such as one from Ensembl, and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a GTF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+#' Read in a GTF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
 #' The GTF file can be either zipped or unzipped.
 #'
 #' @param gtf_file_path Path to GTF file
@@ -2441,10 +2779,10 @@ read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
 }
 
 #' @name get_genes_shortcut
-#' @title Shortcut to get only protein coding genes from GTF file and convert to GRanges object
+#' @title Shortcut to get only protein coding genes from GTF file and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a GTF file, subset to protein coding genes, and convert it to a GRanges object with refactored seq details.
+#' Read in a GTF file, subset to protein coding genes, and convert it to a GenomicRanges object with refactored seq details.
 #' The GTF file can be either zipped or unzipped.
 #'
 #' @param gtf_file_path Path to GTF file
@@ -2462,10 +2800,10 @@ get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlength
 }
 
 #' @name read_maf_file
-#' @title Read MAF file and convert to GRanges object
+#' @title Read MAF file and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a MAF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+#' Read in a MAF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
 #' The MAF file can be either zipped or unzipped.
 #' For more specific MAFtools operations, see `maftools::read.maf()`
 #'
@@ -2494,10 +2832,10 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
 }
 
 #' @name read_bed_file
-#' @title Read in a BED file, with or without header, and convert to GRanges object
+#' @title Read in a BED file, with or without header, and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a BED file and convert it to a GRanges object with refactored seq details.
+#' Read in a BED file and convert it to a GenomicRanges object with refactored seq details.
 #' Expects the first 3 columns as chromosome, start, end; However column names are not necessary
 #' The BED file can be either zipped or unzipped.
 #'
@@ -2570,10 +2908,10 @@ read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_name
 }
 
 #' @name read_vcf_file
-#' @title Read in a VCF file and convert to GRanges object
+#' @title Read in a VCF file and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a VCF file and convert it to a GRanges object with refactored seq details.
+#' Read in a VCF file and convert it to a GenomicRanges object with refactored seq details.
 #' Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 #' Also supports conversion of germline SNP/InDel VCF from DeepVariant.
 #' The VCF file can be either zipped or unzipped.
@@ -2968,6 +3306,7 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
 }
 
 
+
 #' @name geom_deseq2_volcano
 #' @title Volcano plot for exploring results from DESeq2 differential gene expression analysis
 #'
@@ -3100,6 +3439,8 @@ geom_deseq2_volcano <- function(deseq2_diff_expr_output, log2_fc_threshold = 2, 
 #' # pathway_of_interest = "GSE38304_MYC_NEG_VS_POS_GC_BCELL_UP",
 #' # ranked_genes = gsea_demo$ranked_genes)
 #'
+#' @returns ggplot object
+#' @export
 geom_gsea_enrichment <- function(pathways, pathway_of_interest, ranked_genes) {
   # Check pathway GMT file path, read in
   if(file.exists(pathways) & tools::file_ext(pathways) == "gmt") {

@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_vcf_file}
 \alias{read_vcf_file}
-\title{Read in a VCF file and convert to GRanges object}
+\title{Read in a VCF file and convert to GenomicRanges object}
 \usage{
 read_vcf_file(
   vcf_file_path,
@@ -30,7 +30,7 @@ read_vcf_file(
 GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a VCF file and convert it to a GRanges object with refactored seq details.
+Read in a VCF file and convert it to a GenomicRanges object with refactored seq details.
 Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 Also supports conversion of germline SNP/InDel VCF from DeepVariant.
 The VCF file can be either zipped or unzipped.

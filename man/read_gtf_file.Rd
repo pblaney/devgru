@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_gtf_file}
 \alias{read_gtf_file}
-\title{Read in a GTF file, such as one from Ensembl, and convert to GRanges object}
+\title{Read in a GTF file, such as one from Ensembl, and convert to GenomicRanges object}
 \usage{
 read_gtf_file(gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
 }
@@ -15,6 +15,6 @@ read_gtf_file(gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
 GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a GTF file which contains a number of columns and convert it to a GRanges object with refactored seq details.
+Read in a GTF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
 The GTF file can be either zipped or unzipped.
 }

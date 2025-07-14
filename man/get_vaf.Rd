@@ -7,7 +7,7 @@
 get_vaf(vcf_obj, caller, mut_type)
 }
 \arguments{
-\item{vcf_obj}{VCF file in data.table or GRanges format}
+\item{vcf_obj}{VCF file in data.table or GenomicRanges format}
 
 \item{caller}{Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman}
 
@@ -17,7 +17,7 @@ get_vaf(vcf_obj, caller, mut_type)
 data.table object with read support and VAF per record
 }
 \description{
-Given a data.table or GRanges VCF object, quickly extract or explicitly calculate the VAF for all mutations.
+Given a data.table or GenomicRanges VCF object, quickly extract or explicitly calculate the VAF for all mutations.
 For clarity, the read support for the VAF will be extracted as well.
 Currently supports somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
 }

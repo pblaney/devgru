@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{gr_refactor_seqs}
 \alias{gr_refactor_seqs}
-\title{Refactor seqinfo, seqnames, seqlengths, seqlevels of GRanges object for easy harmony}
+\title{Refactor seqinfo, seqnames, seqlengths, seqlevels of GenomicRanges object for easy harmony}
 \usage{
 gr_refactor_seqs(input_gr, new_levels = gUtils::hg_seqlengths())
 }
@@ -15,7 +15,7 @@ gr_refactor_seqs(input_gr, new_levels = gUtils::hg_seqlengths())
 GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Single command to refactor all seq details of a GRanges object to easily harmonize with any other GRanges object.
+Single command to refactor all seq details of a GenomicRanges object to easily harmonize with any other GenomicRanges object.
 By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, see \code{gUtils::hg_seqlengths()}
 Users can adjust this using the \code{new_levels} parameter.
 }

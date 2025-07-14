@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{gr_flank}
 \alias{gr_flank}
-\title{Precise addition of flanking to GRanges with boundary-aware options}
+\title{Precise addition of flanking to GenomicRanges with boundary-aware options}
 \usage{
 gr_flank(
   input_gr,
@@ -13,23 +13,23 @@ gr_flank(
 )
 }
 \arguments{
-\item{input_gr}{GRanges object to add flanks to}
+\item{input_gr}{GenomicRanges object to add flanks to}
 
 \item{start_flank}{Amount of flank (in bp) to be added to the start of the ranges, default: NULL}
 
 \item{end_flank}{Amount of flank (in bp) to be added to the end of the ranges, default: NULL}
 
-\item{start_flank_boundary}{The genomic coordinate the start of the flanked GRanges should
+\item{start_flank_boundary}{The genomic coordinate the start of the flanked GenomicRanges should
 to not exceed, default: NULL}
 
-\item{end_flank_boundary}{The genomic coordinate the end of the flanked GRanges should
+\item{end_flank_boundary}{The genomic coordinate the end of the flanked GenomicRanges should
 to not exceed, default: NULL}
 }
 \value{
 GenomicRanges object with updated start/end coordinates
 }
 \description{
-Precise addition of flanks to the start and/or end of a GRanges object with the option
+Precise addition of flanks to the start and/or end of a GenomicRanges object with the option
 of setting a boundary for the flanks, helpful to account for boundaries like chromosome arms.
 
 Note, the boundaries are compared directly to the new flanked start/end and do not currently

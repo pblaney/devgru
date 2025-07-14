@@ -13,6 +13,9 @@ geom_gsea_enrichment(pathways, pathway_of_interest, ranked_genes)
 
 \item{ranked_genes}{Named vector of genes and their ranks, works directly from \code{get_fgsea_pathway_enrichment()} output}
 }
+\value{
+ggplot object
+}
 \description{
 Creates a ggplot2 style enrichment plot for exploring the results from a fgsea GSEA
 analysis.

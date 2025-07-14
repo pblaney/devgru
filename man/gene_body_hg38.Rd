@@ -3,7 +3,7 @@
 \docType{data}
 \name{gene_body_hg38}
 \alias{gene_body_hg38}
-\title{Gene body segments from Ensemble v108 on hg38 as GRanges}
+\title{Gene body segments from Ensemble v108 on hg38 as GenomicRanges}
 \format{
 \code{GRanges}
 }

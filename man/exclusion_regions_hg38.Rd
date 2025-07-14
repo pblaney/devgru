@@ -3,7 +3,7 @@
 \docType{data}
 \name{exclusion_regions_hg38}
 \alias{exclusion_regions_hg38}
-\title{Collection of genomic regions to exclude from analysis on hg38 as GRanges}
+\title{Collection of genomic regions to exclude from analysis on hg38 as GenomicRanges}
 \format{
 \code{GRanges}
 }

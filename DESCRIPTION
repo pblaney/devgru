@@ -67,5 +67,5 @@ Imports:
     gGnome
 Remotes:
     github::mskilab-org/gUtils,
-    github::mskilab-org/fishHook
+    github::mskilab-org/fishHook,
     github::mskilab-org/gGnome

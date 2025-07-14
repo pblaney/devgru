@@ -111,8 +111,6 @@ normalized_per_gene_mean_expr=filtered_vs_survived=group_means=rn=gene=log2_fc=n
 p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=ID=arm=num.mark=query.id=subject.id=NULL
 tile.id=NULL
 
-chromosome_arms_hg38=exclusion_regions_hg38=NULL
-
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
   op <- options()
@@ -1152,7 +1150,8 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
   }
 
   # Read in the chromosome arms regions
-  #data(chromosome_arms_hg38, package = "devgru")
+  chromosome_arms <- (function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
+  #delayedAssign(x = "chromosome_arms", value = chromosome_arms_hg38)
   #chromosome_arms <- data(chromosome_arms_hg38, )
 
   # Loop through the gaps, find the founder segments that will be used to impute the gaps
@@ -1163,14 +1162,14 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
 
     # To ensure gaps will only be imputed using values from the same arm, check which arm the gap is located on
     gap_arm <- gUtils::gr.findoverlaps(query = goi,
-                                       subject = chromosome_arms_hg38,
+                                       subject = chromosome_arms,
                                        scol = "arm")
     if(gap_arm$arm == "p") {
-      arm_boundaries <- c(GenomicRanges::start(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "p")),
-                          GenomicRanges::end(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "p")))
+      arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")),
+                          GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")))
     } else if(gap_arm$arm == "q") {
-      arm_boundaries <- c(GenomicRanges::start(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "q")),
-                          GenomicRanges::end(chromosome_arms_hg38 %Q% (seqnames == chrom_for_imputation & arm == "q")))
+      arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")),
+                          GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")))
     }
 
     # Calculate the padding for each gap, total padding will be 1.5 the size of the gap
@@ -1386,12 +1385,13 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
   }
 
   # Read in the exclusion regions
-  #data(exclusion_regions_hg38, package = "devgru")
+  exclusion_regions <- (function(...)get(utils::data(...,envir = new.env())))("exclusion_regions_hg38")
+  #delayedAssign(x = "exclusion_regions", value = exclusion_regions_hg38)
   #exclusion_regions <- exclusion_regions_hg38
 
   # Get the whitelist regions
   dryclean_segmentation_whitelist <- gUtils::gr.setdiff(query = dt_to_gr(dryclean_segmentation),
-                                                        subject = exclusion_regions_hg38)
+                                                        subject = exclusion_regions)
 
   # Extract the gaps from the whitelist regions
   gaps_to_impute <- dryclean_segmentation_whitelist %Q% (seg.mean <= threshold_for_imputation)

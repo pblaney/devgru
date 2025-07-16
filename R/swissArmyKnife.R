@@ -98,6 +98,7 @@
 #' @importFrom gtools mixedsort
 #' @importFrom rpart rpart
 #' @importFrom gGnome jJ
+#' @importFrom grDevices colorRampPalette
 
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
@@ -109,7 +110,11 @@ total_per_caller=total_snvs=gene_biotype=type=gene_name=AD_ALT_TUMOR=AD_TUMOR=AF
 FREQ_TUMOR=PM_TUMOR=TIR_TIER1_TUMOR=nearest_gene=gene_body_hg38=gene_id=condition=expr_mean=NULL
 normalized_per_gene_mean_expr=filtered_vs_survived=group_means=rn=gene=log2_fc=neg_log10_p_adj=NULL
 p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=ID=arm=num.mark=query.id=subject.id=NULL
-tile.id=NULL
+tile.id=Final_epgap=Non_telomeric_Loose_Ends=RMSE_of_Coverage_and_CN=Requested_epgap=NULL
+Tier_1_Input_Junctions=Tier_1_Output_Junctions=Tier_2_Input_Junctions=Tier_2_Output_Junctions=NULL
+Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumber=NULL
+p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=NULL
+
 
 # Set up the global default genome and number display
 .onLoad <- function(libname, pkgname) {
@@ -486,6 +491,8 @@ kit_loadout <- function(update_kit = F) {
   cli_stopwatch_end(function_name = "kit_loadout",
                     stopwatch_start = process_start)
 }
+
+
 
 #
 #
@@ -1427,9 +1434,6 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
 }
 
 
-
-
-
 #' @name get_deseq2_diff_expr
 #' @title Run DESeq2 differential expression analysis on RNA-seq count data
 #'
@@ -1837,6 +1841,145 @@ get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus
                             "enrichment_results_dt" = pathway_analysis)
   return(enrichment_output)
 }
+
+#' @name get_jabba_qc_diagnostic
+#' @title Run diagnostic workflow of after JaBbA run to help evaluate quality of graph
+#'
+#' @description
+#' A simple rework to the JaBbA:::QCStats function for more specific local use cases
+#' Provides a text file and quilt-like plot with metrics on convergence, RSME of copy number
+#' estimates, purity, ploidy, loose ends, and junctions.
+#'
+#' @param tumor_normal_id The name of the tumor/normal pair with completed `JaBbA` run
+#' @param jabba_workdir_path Path to the  completed `JaBbA` run work directory
+#'
+#' @examples
+#' # get_jabba_qc_diagnostic(
+#' # tumor_normal_id = "CG15-2647-T_vs_190585-N",
+#' # jabba_workdir_path = "jAbBa/CG15-2647-T_vs_190585-N_jabba_workdir/")
+#'
+#' @returns data.table of QC metrics and quilt-like ggplot
+#' @export
+get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path) {
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_jabba_qc_diagnostic",
+                       tumor_normal_id, jabba_workdir_path)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_jabba_qc_diagnostic")
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("QC metric summary of genome graph built with JaBbA v", utils::packageVersion("JaBbA")))
+  cat("\n")
+
+  # A copy of internal function JaBbA:::QCstats() with some
+  # adjustment for functionality
+  if(!dir.exists(jabba_workdir_path)) {
+    stop(cli::cli_alert_danger("Could not locate {.file {jabba_workdir_path}}, check path"))
+  }
+
+  # Run arguments
+  JaBba_Args <- readRDS(paste0(jabba_workdir_path, "cmd.args.rds"))
+  # Output genome graph
+  output_gg <- readRDS(paste0(jabba_workdir_path, "jabba.gg.rds"))
+  # Output metrics on convergence stats
+  opt.report <- readRDS(paste0(jabba_workdir_path, "opt.report.rds"))
+  # Output karyograph fit stats
+  kar <- readRDS(paste0(jabba_workdir_path, "karyograph.rds"))
+  # Output loose ends
+  loose <- length(readRDS(paste0(jabba_workdir_path, tumor_normal_id, ".jabba.loose_ends.rds")))
+  # Input/Output junction tiers
+  input_Jtiers <- table(readRDS(paste0(jabba_workdir_path, tumor_normal_id, ".nochr.junctions.bedpe.rds"))$tier)
+  output_Jtiers <- table(output_gg$edges[type == 'ALT']$dt$tier)
+  # Input/Output copy number segments
+  input_segs <- length(readRDS(paste0(jabba_workdir_path, tumor_normal_id, ".nochr.dryclean.fragcounter.cbs.imp.seg.rds")))
+  output_segs <- nrow(output_gg$nodes$dt)
+  # Correlations between output copy number and maximum likelihood estimates
+  corr_sp <- cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
+                      kar$segstats$cn[!is.na(kar$segstats$cn)],
+                      method = "spearman")
+  corr_pe <- cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
+                      kar$segstats$cn[!is.na(kar$segstats$cn)],
+                      method = "pearson")
+  # Root mean squared error between output copy number and MLE
+  rmse <- sqrt(sum((kar$segstats$cnmle-kar$segstats$cn)^2,
+                   na.rm = TRUE))
+  # Output ep gap value of convergance
+  fep <- readRDS(paste0(jabba_workdir_path, "jabba.raw.rds"))$epgap
+
+  # Combine all metrics to single table
+  qc_stats_dt <- data.table::data.table("stat" = c("Tumor_Normal_ID",
+                                                   "Tier_1_Input_Junctions",
+                                                   "Tier_2_Input_Junctions",
+                                                   "Tier_3_Input_Junctions",
+                                                   "Tier_1_Output_Junctions",
+                                                   "Tier_2_Output_Junctions",
+                                                   "Tier_3_Output_Junctions",
+                                                   "Number_of_Segments_Input",
+                                                   "Number_of_Segments_Output",
+                                                   "Non_telomeric_Loose_Ends",
+                                                   "Requested_epgap",
+                                                   "Final_epgap",
+                                                   "Converged",
+                                                   "Spearman_Rho_of_Coverage_and_CN",
+                                                   "p_value_of_Spearman_Rho",
+                                                   "Pearson_r_of_Coverage_and_CN",
+                                                   "p_value_of_Pearson_r",
+                                                   "RMSE_of_Coverage_and_CN",
+                                                   "purity",
+                                                   "ploidy"),
+                                        "value" = c(tumor_normal_id,
+                                                    ifelse("1" %in% names(input_Jtiers), input_Jtiers[[1]], "0"),
+                                                    ifelse("2" %in% names(input_Jtiers), input_Jtiers[[2]], "0"),
+                                                    ifelse("3" %in% names(input_Jtiers), input_Jtiers[[3]], "0"),
+                                                    ifelse("1" %in% names(output_Jtiers), output_Jtiers[[1]], "0"),
+                                                    ifelse("2" %in% names(output_Jtiers), output_Jtiers[[2]], "0"),
+                                                    ifelse("3" %in% names(output_Jtiers), output_Jtiers[[3]], "0"),
+                                                    input_segs,
+                                                    output_segs,
+                                                    loose,
+                                                    JaBba_Args$epgap,
+                                                    fep,
+                                                    ifelse(JaBba_Args$epgap > fep,"TRUE","FALSE"),
+                                                    signif(as.vector(corr_sp$estimate), digits = 4),
+                                                    signif(as.vector(corr_sp$p.value), digits = 4),
+                                                    signif(as.vector(corr_pe$estimate), digits = 4),
+                                                    signif(as.vector(corr_pe$p.value), digits = 4),
+                                                    signif(rmse, digits = 4),
+                                                    JaBba_Args$purity,
+                                                    JaBba_Args$ploidy))
+
+  # Save the QC stats table
+  cli::cli_alert_info("Writing qc_stats.txt to {.file {jabba_workdir_path}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  data.table::fwrite(x = qc_stats_dt,
+                     file = paste0(jabba_workdir_path, "qc_stats.txt"),
+                     sep = "\t",
+                     col.names = T)
+  cli::cli_alert_success("Success")
+  cat("\n")
+
+  # Save the QC stats plots
+  diagnostic_plot <- geom_jabba_stats(path_to_stats_dt = paste0(jabba_workdir_path, "qc_stats.txt"),
+                                      karyograph_dt = data.table::data.table("cn" = kar$segstats$cn,
+                                                                             "cnmle" = kar$segstats$cnmle))
+  cli::cli_alert_success("Success")
+  ggplot2::ggsave(filename = "qc_summary.png",
+                  plot = diagnostic_plot,
+                  path = jabba_workdir_path,
+                  width = 300,
+                  height = 300,
+                  units = "mm",
+                  device = "png")
+
+  cli::cli_alert_success("QC summary finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_jabba_qc_diagnostic",
+                    stopwatch_start = process_start)
+}
+
 
 
 
@@ -3236,9 +3379,60 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
 
 #
 #
-# }}}}------->>> Geoms
+# }}}}------->>> Viz: Colors, Geoms, and such
 #
 #
+
+#' @name copynumber_palettier
+#' @title Create color palette for integer copy number states
+#'
+#' @description
+#' Given a set of discrete integer copy number states, produce a diverging blue/red
+#' color palette that scales to any number.
+#'
+#' @param cn_states Discrete integer values of copy number states, typically for plotting
+#'
+#' @examples
+#' # Most common set of states
+#' copynumber_palettier(cn_states = seq(0,4))
+#'
+#' # high level jump
+#' copynumber_palettier(cn_states = c(1,2,3,8))
+#'
+#' @returns data.table of states and assigned color
+#' @export
+copynumber_palettier <- function(cn_states) {
+  # Set the base colors for most common CNs
+  common_cn_dt <- data.table::data.table("copynumber" = c(0,1,2,3),
+                                         "color" = c("#264DFF",
+                                                     "#72D9FF",
+                                                     "#999999",
+                                                     "#F4B86E"))
+
+  max_cn_state <- max(as.numeric(cn_states))
+  # Check the max high CN value
+  if(max_cn_state <= 3) {
+    high_cn_dt <- common_cn_dt
+
+  } else if(max_cn_state == 4) {
+    # If only 4, add a max color
+    high_cn_dt <- rbind(x = common_cn_dt,
+                        y = data.table::data.table("copynumber" = 4,
+                                                   "color"= "#A10E39"))
+  } else if(max_cn_state >= 5) {
+    # If greater or equal to 5, add sequential colors from 3 to max
+    high_cn_dt <- rbind(x = common_cn_dt,
+                        y = data.table::data.table("copynumber" = seq(4,max_cn_state),
+                                                   "color"= grDevices::colorRampPalette(colors = c("#F4B86E","#A10E39"))(max_cn_state - 2)[-1]))
+  }
+
+  # Subset the CN-color DT to desired min/max then factorize in to discrete pal
+  final_cn_dt <- high_cn_dt %>%
+    dplyr::filter(copynumber %in% cn_states)
+  final_cn_dt$copynumber <- factor(final_cn_dt$copynumber,
+                                   levels = sort(cn_states))
+  return(final_cn_dt)
+}
 
 #' @name geom_gap_imputation
 #' @title Diagnostic plot used for reviewing the imputation of gaps in segmentation
@@ -3539,3 +3733,142 @@ geom_gsea_enrichment <- function(pathways, pathway_of_interest, ranked_genes) {
                                            heights = c(0.55,0.1,0.30))
   return(enrichment_plot)
 }
+
+#' @name geom_jabba_stats
+#' @title Diagnostic plot used for evaluating the performance of a JaBbA run
+#'
+#' @description
+#' Creates a ggplot quilt-like plot for quickly evaluating the run performance
+#' and output graph characterisics of a JaBbA run.
+#'
+#' Note, this function was designed to be run as part of the `get_jabba_qc_diagnostic()`
+#' workflow.
+#'
+#' @param path_to_stats_dt Path to the `qc_stats.txt` output from `get_jabba_qc_diagnostic()` run
+#' @param karyograph_dt Karyograph data.table from `JaBbA` run
+#'
+#' @examples
+#' # Snippet from within the function `get_jabba_qc_diagnostic` that calls this geom
+#' # diagnostic_plot <- geom_jabba_stats(
+#' # path_to_stats_dt = paste0(jabba_workdir_path, "qc_stats.txt"),
+#' # karyograph_dt = data.table::data.table("cn" = kar$segstats$cn,
+#' #                                        "cnmle" = kar$segstats$cnmle))
+#'
+#' @returns ggplot object
+#' @export
+geom_jabba_stats <- function(path_to_stats_dt, karyograph_dt) {
+  # Read in stats file and transpose
+  cli::cli_alert_info("Reading {.file {path_to_stats_dt}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  if(file.exists(path_to_stats_dt)){
+    QCDF <- data.table::fread(path_to_stats_dt) %>%
+      data.table::transpose(make.names = 1)
+    QCDF[, Tier_1_Input_Junctions := as.numeric(Tier_1_Input_Junctions)]
+    QCDF[, Tier_2_Input_Junctions := as.numeric(Tier_2_Input_Junctions)]
+    QCDF[, Tier_3_Input_Junctions := as.numeric(Tier_3_Input_Junctions)]
+    QCDF[, Tier_1_Output_Junctions := as.numeric(Tier_1_Output_Junctions)]
+    QCDF[, Tier_2_Output_Junctions := as.numeric(Tier_2_Output_Junctions)]
+    QCDF[, Tier_3_Output_Junctions := as.numeric(Tier_3_Output_Junctions)]
+    QCDF[, Final_epgap := as.numeric(Final_epgap)]
+    QCDF[, p_value_of_Pearson_r := as.numeric(p_value_of_Pearson_r)]
+    QCDF[, p_value_of_Spearman_Rho := as.numeric(p_value_of_Spearman_Rho)]
+    QCDF[, purity := as.numeric(purity)]
+    QCDF[, ploidy := as.numeric(ploidy)]
+  } else {
+    stop(cli::cli_alert_danger("Check input"))
+  }
+  cli::cli_alert_success("Success")
+  cat("\n")
+
+  cli::cli_alert_info("Building QC plots {crayon::white(clisymbols::symbol$ellipsis)}")
+  # Build headers and captions of plot
+  signifr <- ifelse(QCDF$p_value_of_Pearson_r < 0.01, "Signif.", "Non-Signif.")
+  signifRho <- ifelse(QCDF$p_value_of_Spearman_Rho < 0.01, "Signif.", "Non-Signif.")
+  convergence <- ifelse(QCDF$Converged, "Reached", "Not Reached")
+  subtext <- paste0("Convergence ", convergence, " (epgap delta=", signif(as.numeric(QCDF$Requested_epgap) - as.numeric(QCDF$Final_epgap), digits = 4), ")")
+  captiontext <- paste0("rho=", QCDF$Spearman_Rho_of_Coverage_and_CN, " (", signifRho, ")\n", "r=", QCDF$Pearson_r_of_Coverage_and_CN, " (", signifr, ")")
+
+  # Create scatter plot of output copy number of each segment compared to the maximum likelihood estimate
+  karyograph_dt$cn <- factor(karyograph_dt$cn,
+                             levels = sort(unique(karyograph_dt$cn)))
+
+  cn_estimate_scatter <- ggplot2::ggplot(data = karyograph_dt %>%
+                                           dplyr::filter(!is.na(cn))) +
+    ggplot2::geom_jitter(aes(x = cn, y = cnmle, color = cn), width = 0.05, alpha = 0.5, size = 2.5, na.rm = T) +
+    ggplot2::labs(title = "Copy Number vs MLE",
+                  subtitle = subtext,
+                  x = "Copy number",
+                  y = "Maximum likelihood estimate") +
+    ggplot2::scale_y_continuous(limits = c(0, round(max(karyograph_dt$cnmle, na.rm = T) + 0.25, 0))) +
+    ggplot2::scale_color_manual(values = copynumber_palettier(cn_states = levels(karyograph_dt$cn))$color) +
+    ggplot2::annotate(geom = "text",
+                      x = 1.5,
+                      y = max(karyograph_dt$cnmle, na.rm = T) - 0.1,
+                      label = captiontext) +
+    ggplot2::theme(legend.position = "none",
+                   panel.background = element_rect(fill = "transparent"),
+                   panel.border = element_rect(fill = "transparent"),
+                   panel.grid.major = element_line(color = "gray", linetype = "dotted"),
+                   plot.title = element_text(size = 14),
+                   axis.text = element_text(size = 12),
+                   axis.title = element_text(size = 13))
+
+
+  # Create barplot of output versus input number of copy number segments
+  segment_barplot_data <- data.table::data.table("frequency" = c(as.integer(as.numeric(QCDF$Number_of_Segments_Input)),
+                                                                 as.integer(as.numeric(QCDF$Number_of_Segments_Output))),
+                                                 "type" = c("Input", "Output"))
+
+  segment_barplot <- ggplot2::ggplot(data = segment_barplot_data,
+                                     aes(x = type, y = frequency, fill = type)) +
+    ggplot2::geom_bar(stat = "identity", color = "black", width = 0.6) +
+    ggfittext::geom_bar_text(aes(label = frequency), min.size = 10) +
+    ggplot2::scale_fill_manual(values = c("#F05C3B", "#46732E")) +
+    ggplot2::labs(title = "Genomic Segments",
+                  y = "Count",
+                  x = NULL) +
+    ggplot2::theme(legend.position = "none",
+                   panel.background = element_rect(fill = "transparent"),
+                   panel.border = element_rect(fill = "transparent"),
+                   plot.title = element_text(size = 14),
+                   axis.text = element_text(size = 12),
+                   axis.title = element_text(size = 13))
+
+  # Create barplot of output versus input number of copy number segments
+  junction_barplot_data <- data.table::data.table("frequency" = c(QCDF$Tier_3_Input_Junctions, QCDF$Tier_2_Input_Junctions, QCDF$Tier_1_Input_Junctions,
+                                                                  QCDF$Tier_3_Output_Junctions, QCDF$Tier_2_Output_Junctions, QCDF$Tier_1_Output_Junctions),
+                                                  "type" = c("Input","Input","Input","Output","Output","Output"),
+                                                  "tier" = c(3,2,1,3,2,1))
+  junction_barplot_data$tier <- factor(junction_barplot_data$tier,
+                                       levels = c(3,2,1))
+
+  junction_barplot <- ggplot2::ggplot(data = junction_barplot_data,
+                                      aes(x = tier, y = frequency, fill = type)) +
+    ggplot2::geom_bar(stat = "identity", color = "black", position = "dodge") +
+    ggplot2::scale_fill_manual(name = NULL, values = c("#F05C3B", "#46732E")) +
+    ggplot2::labs(title = "SV Junction Tiers",
+                  subtitle = paste0("Number of non-telomeric loose ends=",QCDF$Non_telomeric_Loose_Ends),
+                  y = "Count",
+                  x = "Tier") +
+    ggplot2::theme(legend.position = "right",
+                   panel.background = element_rect(fill = "transparent"),
+                   panel.border = element_rect(fill = "transparent"),
+                   plot.title = element_text(size = 14),
+                   axis.text = element_text(size = 12),
+                   axis.title = element_text(size = 13))
+
+  # Create a table of important values for quick evaluation
+  QCDF$Final_epgap <- signif(QCDF$Final_epgap, digits = 4)
+  QCDF$p_value_of_Spearman_Rho <- scales::scientific(QCDF$p_value_of_Spearman_Rho)
+  QCDF$p_value_of_Pearson_r <- scales::scientific(QCDF$p_value_of_Pearson_r)
+  QCDF$purity <- round(QCDF$purity, digits = 4)
+  QCDF$ploidy <- round(QCDF$ploidy, digits = 4)
+
+  eval_table <- ggpubr::ggtexttable(t(QCDF %>%
+                                        dplyr::select(Tumor_Normal_ID,Final_epgap,Requested_epgap,
+                                                      RMSE_of_Coverage_and_CN,p_value_of_Spearman_Rho,p_value_of_Pearson_r,
+                                                      Non_telomeric_Loose_Ends,purity,ploidy)))
+
+  diagnostic_plot <- patchwork::wrap_plots(list(eval_table, cn_estimate_scatter, junction_barplot, segment_barplot), nrow = 2)
+  return(diagnostic_plot)
+}
+

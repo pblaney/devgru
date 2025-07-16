@@ -1852,6 +1852,7 @@ get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus
 #'
 #' @param tumor_normal_id The name of the tumor/normal pair with completed `JaBbA` run
 #' @param jabba_workdir_path Path to the  completed `JaBbA` run work directory
+#' @param verbose Output CLI during workflow, default: TRUE
 #'
 #' @examples
 #' # get_jabba_qc_diagnostic(
@@ -1860,7 +1861,7 @@ get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus
 #'
 #' @returns data.table of QC metrics and quilt-like ggplot
 #' @export
-get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path) {
+get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose = T) {
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {

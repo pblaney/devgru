@@ -4,12 +4,14 @@
 \alias{get_jabba_qc_diagnostic}
 \title{Run diagnostic workflow of after JaBbA run to help evaluate quality of graph}
 \usage{
-get_jabba_qc_diagnostic(tumor_normal_id, jabba_workdir_path)
+get_jabba_qc_diagnostic(tumor_normal_id, jabba_workdir_path, verbose = T)
 }
 \arguments{
 \item{tumor_normal_id}{The name of the tumor/normal pair with completed \code{JaBbA} run}
 
 \item{jabba_workdir_path}{Path to the  completed \code{JaBbA} run work directory}
+
+\item{verbose}{Output CLI during workflow, default: TRUE}
 }
 \value{
 data.table of QC metrics and quilt-like ggplot

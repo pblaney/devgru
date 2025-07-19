@@ -350,7 +350,7 @@ usethis::use_data(read_depth_demo_hg38, internal = FALSE, overwrite = TRUE)
 
 # Don't rerun the code snippet but simply load the data here
 gene_body_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "gene_body.Ensembl_v108.hg38.bed.gz", package = "devgru"),
-                                      has_header = T)
+                                has_header = T)
 # Export for usage
 usethis::use_data(gene_body_hg38, internal = FALSE, overwrite = TRUE)
 
@@ -374,9 +374,9 @@ usethis::use_data(gene_body_hg38, internal = FALSE, overwrite = TRUE)
 #   - Determine if the library is stranded and the strand orientation.
 #   - Generate genes-samples counts matrix (featureCounts)
 
-hmcl_counts_demo_dt_hg38 <- data.table::fread(file = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"))
+hmcl_counts_demo_dt_hg38 <- data.table::fread(input = fs::path_package("extdata", "hmcl_counts.hg38.txt.gz", package = "devgru"))
 
-hmcl_conditions_demo_dt_hg38 <- data.table::fread(file = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"))
+hmcl_conditions_demo_dt_hg38 <- data.table::fread(input = fs::path_package("extdata", "hmcl_conditions.hg38.txt", package = "devgru"))
 
 # Export for usage
 usethis::use_data(hmcl_counts_demo_dt_hg38, internal = FALSE, overwrite = TRUE)

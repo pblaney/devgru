@@ -3,6 +3,7 @@
 library(devgru)
 library(gUtils)
 library(dplyr)
+library(data.table)
 library(fs)
 
 # library(BSgenome.Hsapiens.UCSC.hg19)

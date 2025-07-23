@@ -1158,8 +1158,6 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
 
   # Read in the chromosome arms regions
   chromosome_arms <- (function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
-  #delayedAssign(x = "chromosome_arms", value = chromosome_arms_hg38)
-  #chromosome_arms <- data(chromosome_arms_hg38, )
 
   # Loop through the gaps, find the founder segments that will be used to impute the gaps
   imputed_gaps_per_chrom <- data.table::data.table()

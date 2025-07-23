@@ -1391,6 +1391,8 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
     } else {
       stop(cli::cli_alert_danger("Could not locate {.file {path_to_structural_variants}}, check path"))
     }
+    # No SVs provided
+    sbv_bps <- NULL
   }
 
   # Read in the exclusion regions

@@ -1379,22 +1379,22 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
     stop(cli::cli_alert_danger("Check input"))
   }
 
-  if(!is.null(path_to_structural_variants) & file.exists(path_to_structural_variants)) {
-    structural_variants <- gGnome::jJ(rafile = path_to_structural_variants,
-                                      chr.convert = F,
-                                      hg = "hg38",
-                                      keep.features = T,
-                                      seqlengths = gUtils::hg_seqlengths()[1:24])
-    # convert to BPs
-    sbv_bps <- gUtils::grl.unlist(structural_variants$grl)
-  } else {
-    stop(cli::cli_alert_danger("Could not locate {.file {path_to_structural_variants}}, check path"))
+  if(!is.null(path_to_structural_variants)) {
+    if(file.exists(path_to_structural_variants)) {
+      structural_variants <- gGnome::jJ(rafile = path_to_structural_variants,
+                                        chr.convert = F,
+                                        hg = "hg38",
+                                        keep.features = T,
+                                        seqlengths = gUtils::hg_seqlengths()[1:24])
+      # convert to BPs
+      sbv_bps <- gUtils::grl.unlist(structural_variants$grl)
+    } else {
+      stop(cli::cli_alert_danger("Could not locate {.file {path_to_structural_variants}}, check path"))
+    }
   }
 
   # Read in the exclusion regions
   exclusion_regions <- (function(...)get(utils::data(...,envir = new.env())))("exclusion_regions_hg38")
-  #delayedAssign(x = "exclusion_regions", value = exclusion_regions_hg38)
-  #exclusion_regions <- exclusion_regions_hg38
 
   # Get the whitelist regions
   dryclean_segmentation_whitelist <- gUtils::gr.setdiff(query = dt_to_gr(dryclean_segmentation),

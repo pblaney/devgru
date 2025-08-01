@@ -51,3 +51,4 @@ expected output is either a data.table or GenomicRanges object
 # seqnames_nona, foreground_cov_nona, start_nona, sample_id)
 
 }
+\keyword{core}

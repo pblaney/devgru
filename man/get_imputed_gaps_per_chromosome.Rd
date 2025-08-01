@@ -46,3 +46,4 @@ Imputation greatly improves the foreground signal in downstream tools like JaBbA
 Note, this function was designed to be run as part of the \code{get_segmentation_gap_imputation()}
 workflow. Also, see \code{chrompar()} for executing in parallel.
 }
+\keyword{workflow}

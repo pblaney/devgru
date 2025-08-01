@@ -55,19 +55,14 @@
 #' @import stringr
 #' @import dplyr
 #' @import ggplot2
-#' @import scales
-#' @import paletteer
-#' @import patchwork
-#' @import ggpubr
-#' @import ggside
 #' @import stats
 #' @import crayon
 #' @import cli
+#' @import clisymbols
 #' @import pio
-#' @import DESeq2
-#' @import fgsea
 #' @import R.utils
 #' @import fishHook
+#' @import utils
 
 #' @importFrom pak pkg_install
 #' @importFrom librarian shelf
@@ -77,29 +72,15 @@
 #' @importFrom S4Vectors mcols
 #' @importFrom Biostrings toString
 #' @importFrom doParallel registerDoParallel
-#' @importFrom foreach foreach
-#' @importFrom foreach `%dopar%`
 #' @importFrom paint paint
 #' @importFrom reshape2 melt
 #' @importFrom purrr as_vector
-#' @importFrom ggridges stat_density_ridges
-#' @importFrom ggfittext geom_bar_text
 #' @importFrom hms hms
 #' @importFrom utils packageVersion
 #' @importFrom fs path_package
-#' @importFrom ggpie ggpie
-#' @importFrom tibble column_to_rownames
-#' @importFrom SummarizedExperiment colData
-#' @importFrom DNAcopy CNA smooth.CNA segment
-#' @importFrom ggrepel geom_text_repel
-#' @importFrom tidyr drop_na
-#' @importFrom BiocParallel MulticoreParam
 #' @importFrom easypar run
 #' @importFrom gtools mixedsort
-#' @importFrom rpart rpart
-#' @importFrom gGnome jJ
 #' @importFrom grDevices colorRampPalette
-
 
 # Appease R CMD CHECK misunderstanding of data.table/data.frame/ggplot2 syntax by declaring these 'global' variables
 # Split these into multiple rows just for better aesthetics as there are many
@@ -113,10 +94,17 @@ p_val_adj=point_label=rank_score=ES=seg.mean=tile_type=ID=arm=num.mark=query.id=
 tile.id=Final_epgap=Non_telomeric_Loose_Ends=RMSE_of_Coverage_and_CN=Requested_epgap=NULL
 Tier_1_Input_Junctions=Tier_1_Output_Junctions=Tier_2_Input_Junctions=Tier_2_Output_Junctions=NULL
 Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumber=NULL
-p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=NULL
+p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
+median_insrt=median_reads=segment=NULL
 
+#
+#
+# }}}}------->>> Data for analysis and demos
+#
+#
 
 # Set up the global default genome and number display
+#' @keywords internal
 .onLoad <- function(libname, pkgname) {
   op <- options()
   op.devgru <- list(
@@ -131,6 +119,46 @@ p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=NULL
 
   invisible()
 }
+
+#' @keywords internal
+.onAttach <- function(libname, pkgname){
+  cli_pio_colorscheme()
+  cli::cli_alert_info("Setting default {.emph {.pkg BSgenome}} to: {.field BSgenome.Hsapiens.UCSC.hg38}")
+}
+
+
+#' @name require_namespaces
+#' @title Vectorised version of requireNamespace
+#'
+#' @description
+#' Carbon copy of the helper function described by Raphael Sonabend-Friend in the package
+#' `survivalmodels`. Vectorises the `requireNamespace` function and returns `TRUE` if all
+#' packages, `x`, are available and `FALSE` otherwise. For internal use only.
+#' https://github.com/RaphaelS1/survivalmodels/blob/main/R/helpers.R
+#'
+#' @param pkgs Vector of character strings with required package name(s)
+#' @keywords internal
+require_namespaces <- function(pkgs) {
+  all(vapply(pkgs, requireNamespace, logical(1), quietly = TRUE))
+}
+
+#' @name get_data
+#' @title Pulls in package data for use in package functions
+#'
+#' @description
+#' Carbon copy of the the helper function described by stackoverflow user henfiber.
+#' Pulls data into a temporary new environment and accesses it for assignment to
+#' a variable in a function. For internal use only.
+#' https://stackoverflow.com/questions/30951204/
+#'
+#' @param name_of_data Character string with name of data as it appears in package
+#' @keywords internal
+get_data <- function(name_of_data) {
+  e <- new.env()
+  name <- utils::data(name_of_data, envir = e)[1]
+  e[[name]]
+}
+
 
 #
 #
@@ -310,6 +338,7 @@ NULL
 #' cli_pio_colorscheme()
 #'
 #' @export
+#' @keywords core
 cli_pio_colorscheme <- function () {
   options(pio.header_bg_colour = crayon::bgBlack)
   options(pio.header_fg_colour = crayon::cyan)
@@ -335,6 +364,7 @@ cli_pio_colorscheme <- function () {
 #'
 #' @returns CLI message and start time of process run
 #' @export
+#' @keywords core
 cli_stopwatch_start <- function(package = "devgru", function_name) {
   # Time stamp start
   cli::cli_rule("{crayon::green('Start')}")
@@ -364,6 +394,7 @@ cli_stopwatch_start <- function(package = "devgru", function_name) {
 #'                                  stopwatch_start = process_start)
 #'
 #' @export
+#' @keywords core
 cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start) {
   # Time stamp stop
   cli::cli_rule("{crayon::red('Stop')}")
@@ -375,7 +406,7 @@ cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start
   hms_table <- stringr::str_split(string = hms::hms(stopwatch_end[3]), pattern = ":", simplify = T)
   colnames(hms_table) <- c("hours","minutes","seconds")
   cli::cli_alert_info("Duration {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(as.data.table(hms_table))
+  paint::paint(data.table::as.data.table(hms_table))
 }
 
 
@@ -405,6 +436,7 @@ cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start
 #'                    parameter_x, parameter_y)
 #'
 #' @export
+#' @keywords core
 function_cli_intro <- function(package = "devgru", function_name, ...) {
   # Show package
   cli_pio_colorscheme()
@@ -431,6 +463,7 @@ function_cli_intro <- function(package = "devgru", function_name, ...) {
   }
 }
 
+# TODO: Build out core and workflow specific loadouts
 #' @name kit_loadout
 #' @title Build the devgru environment by installing/loading packages
 #'
@@ -447,6 +480,7 @@ function_cli_intro <- function(package = "devgru", function_name, ...) {
 #' # kit_loadout(update_kit = T)
 #'
 #' @export
+#' @keywords core
 kit_loadout <- function(update_kit = F) {
   process_start <- cli_stopwatch_start(function_name = "kit_loadout")
   logo_viz <- "
@@ -461,7 +495,7 @@ kit_loadout <- function(update_kit = F) {
                "data.table", "mskilab-org/gUtils", "VariantAnnotation",
                "rtracklayer", "Biostrings", "S4Vectors", "dplyr",
                "stringr", "readr", "ggplot2", "ggsci", "paletteer", "scico",
-               "flextable", "mclust", "parallel", "doParallel", "foreach",
+               "flextable", "mclust", "parallel", "doParallel",
                "R.utils")
 
   # The set of packages used to work on GenomicRanges objects
@@ -472,7 +506,7 @@ kit_loadout <- function(update_kit = F) {
   # The set of packages used to add more functionality on top to GenomicRanges objects
   util_core_pkgs <- data.frame("Utility Core" = c("dplyr","stringr","readr","ggplot2","ggsci",
                                                   "paletteer","scico","flextable","mclust","parallel",
-                                                  "doParallel","foreach","R.utils"))
+                                                  "doParallel","R.utils"))
   # Output the logo
   cat(logo_viz)
   # CLI to show the packages in the kit
@@ -526,6 +560,7 @@ kit_loadout <- function(update_kit = F) {
 #'
 #' @returns GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
+#' @keywords core
 gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   # First, make sure we match input GR 'chr' notation with the desired seqs
   if(length(grep(x = names(new_levels), pattern = "^chr")) > 0) {
@@ -589,6 +624,7 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #'
 #' @returns GenomicRanges object with input columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
+#' @keywords core
 dt_to_gr <- function(input_dt) {
   # Wrap the dt2gr function with the gr_refactor_seqs function
   gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(input_dt, seqlengths = gUtils::hg_seqlengths()[1:24]),
@@ -621,6 +657,7 @@ dt_to_gr <- function(input_dt) {
 #'
 #' @returns TRUE or FALSE
 #' @export
+#' @keywords core
 gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
   # Generic check if query is a GR obj
   # No constraint on expected number of columns
@@ -691,6 +728,7 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
 #'
 #' @returns TRUE or FALSE
 #' @export
+#' @keywords core
 dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
   # Generic check if query is a DT obj
   # No constraint on expected number of columns
@@ -775,6 +813,7 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
 #'
 #' @returns GenomicRanges object with updated start/end coordinates
 #' @export
+#' @keywords core
 gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank_boundary = NULL, end_flank_boundary = NULL) {
   # Check the input object. If data.table, continue on. If not, convert
   if(gr_sanitycheck(query_gr = input_gr)) {
@@ -859,10 +898,14 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #'
 #' @returns data.table
 #' @export
+#' @keywords core
 gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
   # Sanity check of columns in input GR
-  if(!gr_sanitycheck(query_gr = input_gr, expected_cols = exp_colnames)) {
+  if(!gr_sanitycheck(query_gr = input_gr)) {
     stop(cli::cli_alert_danger("Check input"))
+
+  } else if(!exp_colnames %in% colnames(S4Vectors::mcols(input_gr))) {
+    stop(cli::cli_alert_danger("Expectecd colnames not found in input GR"))
   }
 
   seg <- gUtils::gr2dt(input_gr) %>%
@@ -915,6 +958,7 @@ gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
 #'
 #' @returns GenomicRanges object with properly sorted genomic coordinates
 #' @export
+#' @keywords core
 chrompar <- function(par_function, par_chromosomes, ..., run_in_par = T, par_cpus = NULL, par_packages = NULL) {
   # Function CLI
   cli::cli_alert_info(text = "Launching {.emph {.pkg {as.character(substitute(par_function))}()}} in parallel using chromosomes {crayon::white(clisymbols::symbol$ellipsis)}")
@@ -986,7 +1030,13 @@ chrompar <- function(par_function, par_chromosomes, ..., run_in_par = T, par_cpu
 #'
 #' @returns data.table of CBS segmentation values per chromosome
 #' @export
+#' @keywords workflow
 get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, position, sample_id) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = "DNAcopy")) {
+    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
+  }
+
   # Function CLI
   cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_cbs})}}")
 
@@ -1012,7 +1062,6 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
   # increase kmax 25 ==> 40
   # increase nmin 200 ==> 250
   # added undo.splits ==> sdundo
-  # added undo.SD ==>
   cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(x = cna_per_chrom,
                                                                          smooth.region = 25,
                                                                          outlier.SD.scale = 3.5,
@@ -1058,10 +1107,16 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
 #'
 #' @returns data.table object with required GISTIC2.0 columns
 #' @export
+#' @keywords workflow
 get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random_seed = 999, verbose = T,
                                       exp_colnames = c("background.log","foreground.log","input.read.counts",
                                                        "median.chr","foreground","background","log.reads",
                                                        "germline.status")) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = "DNAcopy")) {
+    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
+  }
+
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {
@@ -1142,8 +1197,14 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random
 #'
 #' @returns data.table with gap imputed segmentation
 #' @export
+#' @keywords workflow
 get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmentation_whitelist, segmentation_gaps, threshold = -4.95,
                                             structural_variant_breakpoints = NULL, sample_id, make_plots = F, path_for_plots) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = "rpart")) {
+    stop(cli::cli_alert_danger("Packages {.pkg rpart} required for this workflow function"))
+  }
+
   # Function CLI
   cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_imputation})}}")
 
@@ -1157,7 +1218,8 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
   }
 
   # Read in the chromosome arms regions
-  chromosome_arms <- (function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
+  chromosome_arms <- get_data(name_of_data = "chromosome_arms_hg38")
+  #(function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
 
   # Loop through the gaps, find the founder segments that will be used to impute the gaps
   imputed_gaps_per_chrom <- data.table::data.table()
@@ -1350,10 +1412,16 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
 #'
 #' @returns GenomicRanges object with gap imputed segmentation
 #' @export
+#' @keywords workflow
 get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, threshold_for_imputation = -4.95,
                                             path_to_structural_variants = NULL, cpus = 1, make_diagnostic_plots = FALSE,
                                             path_to_diagnostic_plots_dir = NULL, exp_colnames = c("ID","chrom","loc.start","loc.end","num.mark","seg.mean"),
                                             verbose = T) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("rpart","gGnome"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg rpart, gGnome} required for this workflow function"))
+  }
+
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {
@@ -1396,7 +1464,8 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
   }
 
   # Read in the exclusion regions
-  exclusion_regions <- (function(...)get(utils::data(...,envir = new.env())))("exclusion_regions_hg38")
+  exclusion_regions <- get_data(name_of_data = "exclusion_regions_hg38")
+  #(function(...)get(utils::data(...,envir = new.env())))("exclusion_regions_hg38")
 
   # Get the whitelist regions
   dryclean_segmentation_whitelist <- gUtils::gr.setdiff(query = dt_to_gr(dryclean_segmentation),
@@ -1500,8 +1569,14 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
 #'
 #' @returns List object with Full DESeq2 object, diagnostic plots, DGE log fold change results data.table, per gene TPM results data.table
 #' @export
+#' @keywords workflow
 get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_universe = gene_body_hg38, gene_symbol_column = NULL,
                                  ensembl_id_column = NULL, formula_string, min_transcripts = 10, verbose = T) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("DESeq2","tibble","ggpie","paletteer","patchwork"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg DESeq2, tibble, ggpie, paletteer, patchwork} required for this workflow function"))
+  }
+
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {
@@ -1544,8 +1619,8 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
                                       header = T) %>%
       dplyr::rename("gene_id" = dplyr::all_of(ensembl_id_column)) %>%
       dplyr::inner_join(y = gUtils::gr2dt(gene_universe) %>%
-                          dplyr::select(gene_id, gene_name) %>%
-                          dplyr::distinct(),
+                              dplyr::select(gene_id, gene_name) %>%
+                              dplyr::distinct(),
                         by = "gene_id") %>%
       dplyr::filter(!gene_name %in% c("",NA))
 
@@ -1684,11 +1759,11 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
     ggplot2::annotate(geom = "point",
                       x = levels(per_gene_expr_qc$filtered_vs_survived),
                       y = per_gene_expr_qc %>%
-                        dplyr::group_by(filtered_vs_survived) %>%
-                        dplyr::summarise("group_means" = mean(normalized_per_gene_mean_expr)) %>%
-                        dplyr::select(group_means) %>%
-                        purrr::as_vector() %>%
-                        as.numeric(),
+                            dplyr::group_by(filtered_vs_survived) %>%
+                            dplyr::summarise("group_means" = mean(normalized_per_gene_mean_expr)) %>%
+                            dplyr::select(group_means) %>%
+                            purrr::as_vector() %>%
+                            as.numeric(),
                       size = 5,
                       color = "cyan",
                       alpha = 0.75) +
@@ -1700,7 +1775,7 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
                    panel.border = element_rect(fill = "transparent"))
 
   # Combine the diagnostics QC plots
-  diagnostic_plot <- patchwork::wrap_plots(list(normalized_expr_histogram, normalized_expr_surv_vs_filter,patchwork::plot_spacer(),pct_surv_vs_filter),
+  diagnostic_plot <- patchwork::wrap_plots(list(normalized_expr_histogram,normalized_expr_surv_vs_filter,patchwork::plot_spacer(),pct_surv_vs_filter),
                                            nrow = 2)
   cli::cli_alert_success("Success")
   cat("\n")
@@ -1733,7 +1808,7 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
     dplyr::summarise("basepairs" = sum(width)) %>%
     dplyr::arrange(match(gene_name, rownames(deseq2_obj)))
 
-  mcols(deseq2_obj)$basepairs <- gene_lengths$basepairs
+  S4Vectors::mcols(deseq2_obj)$basepairs <- gene_lengths$basepairs
 
   fpkm_matrix <- DESeq2::fpkm(deseq2_obj, robust = FALSE)
   deseq2_tpm_results <- apply(fpkm_matrix, 2, function(x) { exp(log(x) - log(sum(x)) + log(1e6)) })
@@ -1785,7 +1860,13 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
 #'
 #' @returns list object with ranked genes vector and enrichment results data.table
 #' @export
+#' @keywords workflow
 get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus = 1, verbose = T) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("fgsea","tidyr","BiocParallel"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg fgsea, tidyr, BiocParallel} required for this workflow function"))
+  }
+
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {
@@ -1802,8 +1883,14 @@ get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus
 
   # Check pathway input, if list object, continue ahead. If GMT file path, read in
   cli::cli_alert_info("Reading {.file {pathways}} {crayon::white(clisymbols::symbol$ellipsis)}")
-  if(file.exists(pathways) & tools::file_ext(pathways) == "gmt") {
-    pathway_list <- fgsea::gmtPathways(pathways)
+  if(file.exists(pathways)) {
+    if(tools::file_ext(pathways) == "gmt") {
+      pathway_list <- fgsea::gmtPathways(pathways)
+    } else {
+      stop(cli::cli_alert_danger("Pathways file not in .gmt format"))
+    }
+  } else {
+    stop(cli::cli_alert_danger("Check pathways input file"))
   }
   cli::cli_alert_success("Success")
   cat("\n")
@@ -1864,6 +1951,11 @@ get_fgsea_pathway_enrichment <- function(deseq2_diff_expr_output, pathways, cpus
 #' @returns data.table of QC metrics and quilt-like ggplot
 #' @export
 get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose = T) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("fgsea","tidyr","BiocParallel"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg fgsea, tidyr, BiocParallel} required for this workflow function"))
+  }
+
   # Main Workflow Function CLI
   # Verbose tracing
   if(verbose) {
@@ -1901,12 +1993,12 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
   input_segs <- length(readRDS(paste0(jabba_workdir_path, tumor_normal_id, ".nochr.dryclean.fragcounter.cbs.imp.seg.rds")))
   output_segs <- nrow(output_gg$nodes$dt)
   # Correlations between output copy number and maximum likelihood estimates
-  corr_sp <- cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
-                      kar$segstats$cn[!is.na(kar$segstats$cn)],
-                      method = "spearman")
-  corr_pe <- cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
-                      kar$segstats$cn[!is.na(kar$segstats$cn)],
-                      method = "pearson")
+  corr_sp <- stats::cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
+                             kar$segstats$cn[!is.na(kar$segstats$cn)],
+                             method = "spearman")
+  corr_pe <- stats::cor.test(kar$segstats$cnmle[!is.na(kar$segstats$cn)],
+                             kar$segstats$cn[!is.na(kar$segstats$cn)],
+                             method = "pearson")
   # Root mean squared error between output copy number and MLE
   rmse <- sqrt(sum((kar$segstats$cnmle-kar$segstats$cn)^2,
                    na.rm = TRUE))
@@ -1993,7 +2085,6 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
 
 
 
-# TODO: NEED TO MAKE SURE THIS WORKS
 #' @name get_qc_diagnostics_alignment
 #' @title Generate diagnostic plots for alignment QC checks using Alfred summary files
 #'
@@ -2004,11 +2095,42 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
 #'
 #' @param path_to_tumor_dir Path to directory of tumor sample Alfred summary files
 #' @param path_to_normal_dir Path to directory of normal sample Alfred summary files
+#' @param dataset_title Name of the dataset
+#' @param seq_center Institute/site where sequencing was performed
 #' @param seq_protocol Type of sequencing protocol for display purposes, default: WGS
+#' @param output_path Location to save report PDF, default: `getwd()`
+#'
+#' @examples
+#' # After downloading `*.qc.summary.txt` Alfred output file from the MGP1000 run,
+#' # place tumor and normal sample files into respective subdirectories
+#' # get_qc_diagnostics_alignment(
+#' # path_to_tumor_dir = "data/sanger/examplePDexport_999/preprocessing/alfred/tumor/",
+#' # path_to_normal_dir = "data/sanger/examplePDexport_999/preprocessing/alfred/normal/",
+#' # dataset_title = "examplePDexport_999",
+#' # seq_center = "Wellcome Sanger Institute",
+#' # output_path = "data/sanger/examplePDexport_999/preprocessing/")
 #'
 #' @returns Patchwork 'quilt'-like plot of ggplots
 #' @export
-get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL, seq_protocol = "WGS") {
+#' @keywords workflow
+get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL,
+                                         dataset_title = "", seq_center = "", seq_protocol = "WGS",
+                                         output_path = getwd()) {
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("paletteer","scales","ggridges","patchwork"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg paletteer, scales, ggridges, patchwork} required for this workflow function"))
+  }
+
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_qc_diagnostics_alignment",
+                       path_to_tumor_dir, path_to_normal_dir, dataset_title,
+                       seq_center, seq_protocol, output_path)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_qc_diagnostics_alignment")
 
   # Set figure base theme
   ggplot2::theme_set(
@@ -2024,14 +2146,14 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
   # User provides paths to directory with T/N Alfred alignment QC summary files
   if(!is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
     # Read in and aggregate the tumor/normal alfred QC summary files
-    message("Aggregate input QC summary metrics ...")
+    cli::cli_alert_info("Aggregating Alfred QC summary metrics {crayon::white(clisymbols::symbol$ellipsis)}")
     tumor_alfreds <- aggregate_these(path_to_files = path_to_tumor_dir,
                                      pattern_to_grab = "*.alfred.qc.summary.txt",
                                      delim = "\t",
                                      has_header = T,
                                      add_uniq_id = F)
     tumor_alfreds$tumor_normal <- "Tumor"
-    message("Found ", dplyr::n_distinct(tumor_alfreds$Sample), " tumor samples ...")
+    cli::cli_alert_info("Found {crayon::red({dplyr::n_distinct(tumor_alfreds$Sample)})} tumor samples {crayon::white(clisymbols::symbol$ellipsis)}")
 
     normal_alfreds <- aggregate_these(path_to_files = path_to_normal_dir,
                                       pattern_to_grab = "*.alfred.qc.summary.txt",
@@ -2039,86 +2161,72 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
                                       has_header = T,
                                       add_uniq_id = F)
     normal_alfreds$tumor_normal <- "Normal"
-    message("Found ", dplyr::n_distinct(normal_alfreds$Sample), " normal samples ...")
+    cli::cli_alert_info("Found {crayon::cyan({dplyr::n_distinct(normal_alfreds$Sample)})} normal samples {crayon::white(clisymbols::symbol$ellipsis)}")
 
   } else if(is.null(path_to_tumor_dir) & !is.null(path_to_normal_dir)) {
-    stop(message = "Must provide path to directories of tumor and normal Alfred QC summary files ...")
+    stop(cli::cli_alert_danger("Must provide path to directories of tumor and normal Alfred QC summary files ..."))
 
   } else if(!is.null(path_to_tumor_dir) & is.null(path_to_normal_dir)) {
-    stop(message = "Must provide path to directories of tumor and normal Alfred QC summary files ...")
+    stop(cli::cli_alert_danger("Must provide path to directories of tumor and normal Alfred QC summary files ..."))
   }
+  cli::cli_alert_success("Success")
+  cat("\n")
 
   # Sanity check if there is no match between normal/tumor samples
-  message("Quick view of samples for sanity cross-check ...")
+  cli::cli_alert_info("Quick view of samples for sanity cross-check {crayon::white(clisymbols::symbol$ellipsis)}")
   paint::paint(df = data.frame("Tumor" = tumor_alfreds$Sample))
   paint::paint(df = data.frame("Normal" = normal_alfreds$Sample))
 
-  # Combine the SNV+InDel QC metrics
-  message("Merging tumor and normal alignment metrics ...")
-  alfred_metrics <- gUtils::rrbind(tumor_alfreds, normal_alfreds)
+  # Combine the Alfred QC metrics
+  cli::cli_alert_info("Merging tumor and normal alignment metrics {crayon::white(clisymbols::symbol$ellipsis)}")
+  alfred_metrics <- data.table::as.data.table(gUtils::rrbind(tumor_alfreds, normal_alfreds))
+
+  # Need to reclassify some columns for easier downstream operations
+  alfred_metrics[, Mapped := as.numeric(Mapped)]
 
   # boxplot of total mapped reads
-  message("Generating diagnostic plots ...")
-  fraction_fwd_rev_melt <- alfred_metrics %>%
-                            dplyr::select(Sample, MappedForwardFraction, MappedReverseFraction, tumor_normal) %>%
-                            reshape2::melt(id.vars = c("Sample", "tumor_normal"),
-                                           value.name = "fraction",
-                                           variable.name = "alignment_group")
+  cli::cli_alert_info("Generating diagnostic plots {crayon::white(clisymbols::symbol$ellipsis)}")
 
   mapped_reads_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggplot2::geom_boxplot(ggplot2::aes(x = tumor_normal, y = Mapped, fill = tumor_normal), alpha = 0.6, width = 0.3) +
+    ggplot2::geom_boxplot(ggplot2::aes(x = tumor_normal, y = Mapped, fill = tumor_normal),
+                          alpha = 0.6, width = 0.3, outliers = FALSE) +
     ggplot2::scale_fill_manual(name = "Sample\nType", values = c("skyblue", "darkred")) +
-    ggplot2::geom_jitter(ggplot2::aes(x = tumor_normal, y = Mapped, color = round(MappedProperFraction * 100, digits = 1)), alpha = 0.5, size = 3, width = 0.2) +
+    ggplot2::geom_jitter(ggplot2::aes(x = tumor_normal, y = Mapped, color = round(MappedProperFraction * 100, digits = 1)),
+                         alpha = 0.5, size = 3, width = 0.2) +
     ggplot2::scale_color_gradientn(name = "Percent\nMapped", colors = paletteer::paletteer_c("grDevices::Inferno", 10)) +
     ggplot2::scale_y_continuous(labels = scales::label_comma(scale = 1e-6),
-                       limits = c(min(alfred_metrics$Mapped) - min(alfred_metrics$Mapped) * 0.10,
-                                  max(alfred_metrics$Mapped) + max(alfred_metrics$Mapped) * 0.10),
-                       expand = c(0.02,0.02)) +
-    ggside::geom_xsidecol(data = fraction_fwd_rev_melt,
-                          ggplot2::aes(x = tumor_normal, y = fraction, group = alignment_group),
-                          position = "dodge", width = 0.5, just = 0.3,
-                          fill = dplyr::case_when(fraction_fwd_rev_melt$alignment_group == "MappedForwardFraction" ~ "#009292",
-                                           fraction_fwd_rev_melt$alignment_group == "MappedReverseFraction" ~ "#490092"), color = "black") +
-    ggside::geom_xsidehline(yintercept = 0.45, color = "cyan") +
-    ggside::scale_xsidey_continuous(labels = scales::label_percent()) +
+                                expand = c(0.02,0.02)) +
     ggplot2::labs(x = NULL,
                   y = "Reads (millions)") +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, vjust = 0.95, hjust = 0.5),
-                   panel.border = ggplot2::element_rect(fill = NA),
-                   ggside.panel.scale = .25) +
-    ggplot2::annotate(geom = "text",
-                      x = c(0.85, 1.15, 1.85, 2.15),
-                      y = max(alfred_metrics$Mapped) + max(alfred_metrics$Mapped) * 0.10,
-                      label = c("Fwd", "Rev", "Fwd", "Rev"),
-                      color = c("#009292", "#490092","#009292", "#490092")) +
+    ggplot2::theme(axis.text.x =  ggplot2::element_text(angle = 33, vjust = 0.60, hjust = 0.5),
+                   panel.border = ggplot2::element_rect(fill = NA)) +
     ggplot2::annotate(geom = "text",
                       x = c(0.60, 2.40),
                       y = alfred_metrics %>%
-                             dplyr::group_by(tumor_normal) %>%
-                             dplyr::reframe(med_reads = stats::median(Mapped)) %>%
-                             dplyr::select(med_reads) %>%
-                             purrr::as_vector(),
-                      label = round(alfred_metrics %>%
-                                       dplyr::group_by(tumor_normal) %>%
-                                       dplyr::reframe(med_reads = stats::median(Mapped)) %>%
-                                       dplyr::select(med_reads) %>%
-                                       purrr::as_vector() %>%
-                                       as.numeric(),
-                                    digits = -6) / 1e6)
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_reads" = stats::median(Mapped)) %>%
+                        dplyr::select(median_reads) %>%
+                        purrr::as_vector(),
+                      label = prettyNum(x = round(alfred_metrics %>%
+                                                    dplyr::group_by(tumor_normal) %>%
+                                                    dplyr::reframe("median_reads" = stats::median(Mapped)) %>%
+                                                    dplyr::select(median_reads) %>%
+                                                    purrr::as_vector() %>%
+                                                    as.numeric(),
+                                                  digits = -6) / 1e6,
+                                        big.mark = ","))
 
   # boxplots of read fractions
-  all_fractions <- data.table("group" = c("DuplicateFraction", "SecondaryAlignmentFraction", "SupplementaryAlignmentFraction", "UnmappedFraction"),
-                              "Duplicate" = as.numeric(alfred_metrics$DuplicateFraction),
-                              "Secondary" = as.numeric(alfred_metrics$SecondaryAlignmentFraction),
-                              "Supplementary" = as.numeric(alfred_metrics$SupplementaryAlignmentFraction),
-                              "Unmapped" = as.numeric(alfred_metrics$UnmappedFraction)) %>%
-    reshape2::melt(id.vars = "group",
-                   value.name = "fraction",
+  all_fractions <- data.table::data.table("Duplicate" = as.numeric(alfred_metrics$DuplicateFraction),
+                                          "Secondary" = as.numeric(alfred_metrics$SecondaryAlignmentFraction),
+                                          "Supplementary" = as.numeric(alfred_metrics$SupplementaryAlignmentFraction),
+                                          "Unmapped" = as.numeric(alfred_metrics$UnmappedFraction)) %>%
+    reshape2::melt(value.name = "fraction",
                    variable.name = "alignment_group")
 
   median_fractions_by_group <- all_fractions %>%
-                                dplyr::group_by(alignment_group) %>%
-                                dplyr::summarise(median_frac = stats::median(fraction))
+    dplyr::group_by(alignment_group) %>%
+    dplyr::summarise("median_frac" = stats::median(fraction))
 
   read_fracs_plt <- ggplot2::ggplot(data = all_fractions) +
     ggplot2::geom_boxplot(ggplot2::aes(x = alignment_group, y = fraction * 100, fill = alignment_group), alpha = 0.6, width = 0.4, outliers = F) +
@@ -2128,131 +2236,222 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
     ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
     ggplot2::labs(x = NULL,
                   y = "Reads (%)") +
-    ggplot2::theme(axis.text.x =  ggplot2::element_text(angle = 33, vjust = 0.60, hjust = 0.5, size = 9),
-                    legend.position = "right",
-                    panel.border =  ggplot2::element_rect(fill = NA))
+    ggplot2::theme(axis.text.x =  ggplot2::element_text(angle = 33, vjust = 0.60, hjust = 0.5),
+                   legend.position = "inside",
+                   legend.position.inside = c(0.73,0.73),
+                   panel.border =  ggplot2::element_rect(fill = NA))
 
-  all_reads <- data.table("group" = c("DuplicateMarked", "SecondaryAlignments", "SupplementaryAlignments", "Unmapped"),
-                          "Duplicate" = as.numeric(alfred_metrics$DuplicateMarked),
-                          "Secondary" = as.numeric(alfred_metrics$SecondaryAlignments),
-                          "Supplementary" = as.numeric(alfred_metrics$SupplementaryAlignments),
-                          "Unmapped" = as.numeric(alfred_metrics$Unmapped)) %>%
-    reshape2::melt(id.vars = "group",
-                   value.name = "count",
-                   variable.name = "alignment_group")
-
-  median_fractions_by_group <- all_reads %>%
-                                dplyr::group_by(alignment_group) %>%
-                                dplyr::summarise(median_count = stats::median(as.numeric(count)))
-
-  read_counts_plt <- ggplot2::ggplot(data = all_reads) +
-    ggplot2::geom_col(data = median_fractions_by_group,
-             ggplot2::aes(x = alignment_group, y = median_count, fill = alignment_group), alpha = 0.3, width = 0.4, color = "black") +
-    ggplot2::scale_fill_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
-    ggplot2::geom_jitter(ggplot2::aes(x = alignment_group, y = count, color = alignment_group), alpha = 0.4, size = 2.5, width = 0.3) +
-    ggplot2::scale_color_manual(name = "Alignment\nType", values = paletteer::paletteer_d("ggsci::hallmarks_light_cosmic")[1:5]) +
-    ggplot2::scale_y_reverse(labels = scales::label_comma(scale = 1e-6),expand = c(0.02,0.02)) +
-    ggplot2::scale_x_discrete(position = "top") +
-    ggplot2::labs(x = NULL,
-                  y = "Reads (millions)") +
-    ggplot2::theme(axis.text.x = ggplot2::element_blank(),
-                   legend.position = "none",
-                   panel.border = ggplot2::element_rect(fill = NA))
-
-  # First combo plot of read metrics
-  read_mets_plt <- patchwork::wrap_plots(list(read_fracs_plt, read_counts_plt), ncol = 1, guides = "collect")
+  # Read combo plot
+  read_plots <- patchwork::wrap_plots(list(mapped_reads_plt, read_fracs_plt), ncol = 2, nrow = 1)
 
   # Coverage
-  coverage_dist_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggridges::stat_density_ridges(ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf))),
-                                  alpha = 0.5,
-                                  calc_ecdf = TRUE,
-                                  bandwidth = 3,
-                                  geom = "density_ridges_gradient",
-                                  scale = 2) +
+  tumor_coverage_dist_plt <- ggplot2::ggplot(data = alfred_metrics %>%
+                                               dplyr::filter(tumor_normal == "Tumor"),
+                                             ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf)))) +
+    ggridges::stat_density_ridges(aes(point_color = "darkred", point_size = 2),
+                                  calc_ecdf = TRUE, bandwidth = 3, geom = "density_ridges_gradient",
+                                  scale = 8, jittered_points = TRUE, position = ggridges::position_points_jitter(height = 0.05, yoffset = -0.1, seed = 999)) +
     ggplot2::scale_fill_gradientn(name = "Tail prob.\nCoverage", colors = paletteer::paletteer_c("grDevices::Turku", n = 10)) +
-    ggplot2::scale_x_continuous(expand = c(0.03,0.03), limits = c(min(alfred_metrics$MedianCoverage),max(alfred_metrics$MedianCoverage) + 5)) +
-    ggside::geom_xsidepoint(ggplot2::aes(x = MedianCoverage, y = tumor_normal, color = tumor_normal),
-                            position = "jitter", alpha = 0.5, show.legend = F, na.rm = T) +
-    ggplot2::scale_color_manual(values = c("skyblue", "darkred")) +
-    ggplot2::labs(x = "Coverage",
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03)) +
+    ggplot2::labs(title = "Coverage",
+                  x = NULL,
                   y = NULL) +
-    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA))
+    ggplot2::theme(legend.position = "none",
+                   plot.title = element_text(hjust = 0.5, size = 13),
+                   panel.border = ggplot2::element_rect(fill = NA)) +
+    ggplot2::annotate(geom = "text",
+                      x = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_cov" = stats::median(MedianCoverage)) %>%
+                        dplyr::filter(tumor_normal == "Tumor") %>%
+                        dplyr::select(median_cov) %>%
+                        purrr::as_vector(),
+                      y = 0.75,
+                      label = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_cov" = stats::median(MedianCoverage)) %>%
+                        dplyr::filter(tumor_normal == "Tumor") %>%
+                        dplyr::select(median_cov) %>%
+                        purrr::as_vector())
+
+  normal_coverage_dist_plt <- ggplot2::ggplot(data = alfred_metrics %>%
+                                                dplyr::filter(tumor_normal == "Normal"),
+                                              ggplot2::aes(x = MedianCoverage, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf)))) +
+    ggridges::stat_density_ridges(aes(point_color = "skyblue", point_size = 2),
+                                  calc_ecdf = TRUE, bandwidth = 3, geom = "density_ridges_gradient",
+                                  scale = 8, jittered_points = TRUE, position = ggridges::position_points_jitter(height = 0.05, yoffset = -0.1, seed = 999)) +
+    ggplot2::scale_fill_gradientn(colors = paletteer::paletteer_c("grDevices::Turku", n = 10)) +
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03)) +
+    ggplot2::labs(x = NULL,
+                  y = NULL) +
+    ggplot2::theme(legend.position = "none",
+                   panel.border = ggplot2::element_rect(fill = NA)) +
+    ggplot2::annotate(geom = "text",
+                      x = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_cov" = stats::median(MedianCoverage)) %>%
+                        dplyr::filter(tumor_normal == "Normal") %>%
+                        dplyr::select(median_cov) %>%
+                        purrr::as_vector(),
+                      y = 0.75,
+                      label = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_cov" = stats::median(MedianCoverage)) %>%
+                        dplyr::filter(tumor_normal == "Normal") %>%
+                        dplyr::select(median_cov) %>%
+                        purrr::as_vector())
+
+  # Combo of covearge plots
+  cov_plts <- patchwork::wrap_plots(list(tumor_coverage_dist_plt, normal_coverage_dist_plt), ncol = 1, nrow = 2, guides = "collect", axes = "collect_x")
 
   # Insert size distribution
-  insert_dist_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggridges::stat_density_ridges(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf))),
-                                  alpha = 0.5,
-                                  calc_ecdf = TRUE,
-                                  bandwidth = 10,
-                                  geom = "density_ridges_gradient",
-                                  scale = 2) +
+  tumor_insert_dist_plt <- ggplot2::ggplot(data = alfred_metrics %>%
+                                             dplyr::filter(tumor_normal == "Tumor"),
+                                           ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf)))) +
+    ggridges::stat_density_ridges(aes(point_color = "darkred", point_size = 2),
+                                  calc_ecdf = TRUE, bandwidth = 3, geom = "density_ridges_gradient",
+                                  scale = 8, jittered_points = TRUE, position = ggridges::position_points_jitter(height = 0.05, yoffset = -0.1, seed = 999)) +
     ggplot2::scale_fill_gradientn(name = "Insert\nSize", colors = paletteer::paletteer_c("grDevices::Lajolla", n = 10)) +
-    ggplot2::scale_x_continuous(expand = c(0.03,0.03), limits = c(min(alfred_metrics$MedianInsertSize),max(alfred_metrics$MedianInsertSize) + 5)) +
-    ggside::geom_xsidepoint(ggplot2::aes(x = MedianInsertSize, y = tumor_normal, color = tumor_normal),
-                            position = "jitter", alpha = 0.5, show.legend = F, na.rm = T) +
-    ggplot2::scale_color_manual(values = c("skyblue", "darkred")) +
-    ggplot2::labs(x = "Insert Size (bp)",
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03)) +
+    ggplot2::labs(title = "Insert Size (bp)",
+                  x = NULL,
                   y = NULL) +
-    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
-                    axis.text.y = ggplot2::element_blank())
+    ggplot2::theme(legend.position = "none",
+                   plot.title = element_text(hjust = 0.5, size = 13),
+                   panel.border = ggplot2::element_rect(fill = NA),
+                   axis.text.y = ggplot2::element_blank(),
+                   axis.ticks.y = element_blank()) +
+    ggplot2::annotate(geom = "text",
+                      x = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_insrt" = stats::median(MedianInsertSize)) %>%
+                        dplyr::filter(tumor_normal == "Tumor") %>%
+                        dplyr::select(median_insrt) %>%
+                        purrr::as_vector(),
+                      y = 0.75,
+                      label = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_insrt" = stats::median(MedianInsertSize)) %>%
+                        dplyr::filter(tumor_normal == "Tumor") %>%
+                        dplyr::select(median_insrt) %>%
+                        purrr::as_vector())
 
-  # Second combo plot of coverage and insert size distribution
-  cov_insrt_plt <- patchwork::wrap_plots(list(coverage_dist_plt, insert_dist_plt), ncol = 2, nrow = 1, guides = "collect")
+  normal_insert_dist_plt <- ggplot2::ggplot(data = alfred_metrics %>%
+                                              dplyr::filter(tumor_normal == "Normal"),
+                                            ggplot2::aes(x = MedianInsertSize, y = tumor_normal, fill = 0.5 - abs(0.5 - ggplot2::after_stat(ecdf)))) +
+    ggridges::stat_density_ridges(aes(point_color = "skyblue", point_size = 2),
+                                  calc_ecdf = TRUE, bandwidth = 3, geom = "density_ridges_gradient",
+                                  scale = 8, jittered_points = TRUE, position = ggridges::position_points_jitter(height = 0.05, yoffset = -0.1, seed = 999)) +
+    ggplot2::scale_fill_gradientn(name = "Insert\nSize", colors = paletteer::paletteer_c("grDevices::Lajolla", n = 10)) +
+    ggplot2::scale_x_continuous(expand = c(0.03,0.03)) +
+    ggplot2::labs(x = NULL,
+                  y = NULL) +
+    ggplot2::theme(legend.position = "none",
+                   panel.border = ggplot2::element_rect(fill = NA),
+                   axis.text.y = ggplot2::element_blank(),
+                   axis.ticks.y = element_blank()) +
+    ggplot2::annotate(geom = "text",
+                      x = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_insrt" = stats::median(MedianInsertSize)) %>%
+                        dplyr::filter(tumor_normal == "Normal") %>%
+                        dplyr::select(median_insrt) %>%
+                        purrr::as_vector(),
+                      y = 0.75,
+                      label = alfred_metrics %>%
+                        dplyr::group_by(tumor_normal) %>%
+                        dplyr::reframe("median_insrt" = stats::median(MedianInsertSize)) %>%
+                        dplyr::filter(tumor_normal == "Normal") %>%
+                        dplyr::select(median_insrt) %>%
+                        purrr::as_vector())
+
+  # Combo plot of coverage and insert size distribution
+  insrt_plts <- patchwork::wrap_plots(list(tumor_insert_dist_plt, normal_insert_dist_plt), ncol = 1, nrow = 2, guides = "collect", axes = "collect_x")
+
+  # Coverage and insert size combo plot
+  cov_insrt_plots <- patchwork::wrap_plots(list(cov_plts, insrt_plts), ncol = 2, nrow = 1)
 
   # Text table of summary metrics
-  # TODO: add outlier sample flagging
   tumor_table_metrics <- alfred_metrics %>% dplyr::filter(tumor_normal == "Tumor")
   normal_table_metrics <- alfred_metrics %>% dplyr::filter(tumor_normal == "Normal")
-  outtable <- data.table(placeholder = c("Tumor", "Normal"),
-                         "Coverage" = c(stringr::str_c(round(mean(tumor_table_metrics$MedianCoverage), digits = 1), " (", range(tumor_table_metrics$MedianCoverage)[1], "-", range(tumor_table_metrics$MedianCoverage)[2], ")"),
-                                        stringr::str_c(round(mean(normal_table_metrics$MedianCoverage), digits = 1), " (", range(normal_table_metrics$MedianCoverage)[1], "-", range(normal_table_metrics$MedianCoverage)[2], ")")),
-                         "Insert Size" = c(stringr::str_c(round(mean(tumor_table_metrics$MedianInsertSize), digits = 1), " (", range(tumor_table_metrics$MedianInsertSize)[1], "-", range(tumor_table_metrics$MedianInsertSize)[2], ")"),
-                                           stringr::str_c(round(mean(normal_table_metrics$MedianInsertSize), digits = 1), " (", range(normal_table_metrics$MedianInsertSize)[1], "-", range(normal_table_metrics$MedianInsertSize)[2], ")")),
-                         "Read Length" = c(stringr::str_split(string = unique(tumor_table_metrics$MedianReadLength), pattern = ":",simplify = T)[,1],
-                                           stringr::str_split(string = unique(normal_table_metrics$MedianReadLength), pattern = ":",simplify = T)[,1]))
-  colnames(outtable)[1] <- paste0(seq_protocol, " mean(range)")
+  outtable <- data.table::data.table(
+    "placeholder" = c("Tumor", "Normal"),
+    "Samples" = c(dplyr::n_distinct(tumor_table_metrics$Sample),
+                  dplyr::n_distinct(normal_table_metrics$Sample)),
+    "Coverage" = c(stringr::str_c(round(median(tumor_table_metrics$MedianCoverage), digits = 1), " (",
+                                  range(tumor_table_metrics$MedianCoverage)[1], "-",
+                                  range(tumor_table_metrics$MedianCoverage)[2], ")"),
+                   stringr::str_c(round(median(normal_table_metrics$MedianCoverage), digits = 1), " (",
+                                  range(normal_table_metrics$MedianCoverage)[1], "-",
+                                  range(normal_table_metrics$MedianCoverage)[2], ")")),
+    "Mapped Reads (million)" = c(stringr::str_c(prettyNum(round(median(tumor_table_metrics$Mapped) / 1e6, digits = 0), big.mark = ","), " (",
+                                                prettyNum(round(range(tumor_table_metrics$Mapped)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                                prettyNum(round(range(tumor_table_metrics$Mapped)[2] / 1e6, digits = 0), big.mark = ","), ")"),
+                                 stringr::str_c(prettyNum(round(median(normal_table_metrics$Mapped) / 1e6, digits = 0), big.mark = ","), " (",
+                                                prettyNum(round(range(normal_table_metrics$Mapped)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                                prettyNum(round(range(normal_table_metrics$Mapped)[2] / 1e6, digits = 0), big.mark = ","), ")")),
+    "Properly Paired (%)" = c(stringr::str_c(round(median(tumor_table_metrics$MappedProperFraction) * 100, digits = 1), " (",
+                                             round(range(tumor_table_metrics$MappedProperFraction)[1] * 100, digits = 1), "-",
+                                             round(range(tumor_table_metrics$MappedProperFraction)[2] * 100, digits = 1), ")"),
+                              stringr::str_c(round(median(normal_table_metrics$MappedProperFraction) * 100, digits = 1), " (",
+                                             round(range(normal_table_metrics$MappedProperFraction)[1] * 100, digits = 1), "-",
+                                             round(range(normal_table_metrics$MappedProperFraction)[2] * 100, digits = 1), ")")),
+    "Duplicates (million)" = c(stringr::str_c(prettyNum(round(median(tumor_table_metrics$DuplicateMarked) / 1e6, digits = 0), big.mark = ","), " (",
+                                              prettyNum(round(range(tumor_table_metrics$DuplicateMarked)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                              prettyNum(round(range(tumor_table_metrics$DuplicateMarked)[2] / 1e6, digits = 0), big.mark = ","), ")"),
+                               stringr::str_c(prettyNum(round(median(normal_table_metrics$DuplicateMarked) / 1e6, digits = 0), big.mark = ","), " (",
+                                              prettyNum(round(range(normal_table_metrics$DuplicateMarked)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                              prettyNum(round(range(normal_table_metrics$DuplicateMarked)[2] / 1e6, digits = 0), big.mark = ","), ")")),
+    "Supplementary (million)" = c(stringr::str_c(prettyNum(round(median(tumor_table_metrics$SupplementaryAlignments) / 1e6, digits = 0), big.mark = ","), " (",
+                                                 prettyNum(round(range(tumor_table_metrics$SupplementaryAlignments)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                                 prettyNum(round(range(tumor_table_metrics$SupplementaryAlignments)[2] / 1e6, digits = 0), big.mark = ","), ")"),
+                                  stringr::str_c(prettyNum(round(median(normal_table_metrics$SupplementaryAlignments) / 1e6, digits = 0), big.mark = ","), " (",
+                                                 prettyNum(round(range(normal_table_metrics$SupplementaryAlignments)[1] / 1e6, digits = 0), big.mark = ","), "-",
+                                                 prettyNum(round(range(normal_table_metrics$SupplementaryAlignments)[2] / 1e6, digits = 0), big.mark = ","), ")")),
+    "Insert Size (bp)" = c(stringr::str_c(round(median(tumor_table_metrics$MedianInsertSize), digits = 1), " (",
+                                          range(tumor_table_metrics$MedianInsertSize)[1], "-",
+                                          range(tumor_table_metrics$MedianInsertSize)[2], ")"),
+                           stringr::str_c(round(median(normal_table_metrics$MedianInsertSize), digits = 1), " (",
+                                          range(normal_table_metrics$MedianInsertSize)[1], "-",
+                                          range(normal_table_metrics$MedianInsertSize)[2], ")")))
+
+  colnames(outtable)[1] <- paste0(seq_protocol, " (",
+                                  stringr::str_split(string = unique(tumor_table_metrics$MedianReadLength),
+                                                     pattern = ":",
+                                                     simplify = T)[,1], " bp)")
   metrics_summary_table <- ggpubr::ggtexttable(t(outtable), theme = ggpubr::ttheme("light"))
 
-  # Histograms of target bed mapped fraction, insertion and deletion detection rate
-  target_frac_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggplot2::geom_histogram(ggplot2::aes(x = FractionCovered, group = tumor_normal, fill = tumor_normal),
-                            position = "dodge", binwidth = 0.05,  color = "black", alpha = 0.6) +
-    ggplot2::scale_x_continuous(limits = c(0,1), expand = c(0.02,0.02), breaks = scales::breaks_width(width = 0.1)) +
-    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
-    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
-    ggplot2::labs(x = "Fraction of target covered",
-                  y = "Count of samples per bin") +
-    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
-                   legend.position = "none")
-
-  ins_rate_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggplot2::geom_histogram(ggplot2::aes(x = InsertionRate, group = tumor_normal, fill = tumor_normal),
-                   position = "stack", binwidth = 0.000005, color = "black", alpha = 0.6) +
-    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
-    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
-    ggplot2::labs(x = "Insertion rate",
-                  y = "Count of samples per bin") +
-    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
-                   legend.position = "none")
-
-  del_rate_plt <- ggplot2::ggplot(alfred_metrics) +
-    ggplot2::geom_histogram(ggplot2::aes(x = DeletionRate, group = tumor_normal, fill = tumor_normal),
-                            position = "stack", binwidth = 0.000005, color = "black", alpha = 0.6) +
-    ggplot2::scale_y_continuous(expand = c(0.02,0.02)) +
-    ggplot2::scale_fill_manual(values = c("skyblue", "darkred")) +
-    ggplot2::labs(x = "Deletion rate",
-                  y = "Count of samples per bin") +
-    ggplot2::theme(panel.border = ggplot2::element_rect(fill = NA),
-                   legend.position = "none")
-
-  # Third combo plot of histograms
-  hist_combo_plot <- target_frac_plt / ins_rate_plt / del_rate_plt + patchwork::plot_layout(axes = "collect_y")
-
   # Final quilt plot of all QC plots
-  read_combo_plt <- (patchwork::plot_spacer() + metrics_summary_table + patchwork::plot_spacer()) / (mapped_reads_plt + hist_combo_plot + read_mets_plt) / cov_insrt_plt + patchwork::plot_layout(ncol = 1, nrow = 3, heights = c(0.66, 1, 1))
-  return(read_combo_plt)
+  diagnostic_plot <- patchwork::wrap_plots(list(metrics_summary_table, read_plots, cov_insrt_plots), ncol = 1, nrow = 3, heights = c(0.70, 0.90, 1.05)) +
+    patchwork::plot_annotation(title = paste0("Dataset: ", dataset_title),
+                               subtitle = paste0("Sequencing Center: ", seq_center, "\nQC Report render date: ", Sys.Date()),
+                               caption = paste0("Tumor samples: ", path_to_tumor_dir, "\n",
+                                                "Normal samples: ", path_to_normal_dir, "\n"),
+                               theme = theme(plot.title = element_text(size = 16),
+                                             plot.subtitle = element_text(size = 14),
+                                             plot.caption = element_text(size = 11,
+                                                                         hjust = 0)))
+  # Export the plot
+  diagnostic_plot_name <- paste0("alignmentQCDiagnostics_", dataset_title, ".pdf")
+  cli::cli_alert_success("Saving diagnostic plots to {.file {paste0(output_path,diagnostic_plot_name)}}")
+  ggplot2::ggsave(filename = diagnostic_plot_name,
+                  plot = diagnostic_plot,
+                  path = output_path,
+                  width = 210,
+                  height = 330,
+                  units = "mm",
+                  device = "pdf",
+                  dpi = "print")
+
+  # Output list of ranked genes and pathway enrichment DT
+  cat("\n")
+  cli::cli_alert_success("Success")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_qc_diagnostics_alignment",
+                    stopwatch_start = process_start)
 }
+
+
 
 
 # TODO: NEED TO MAKE SURE THIS WORKS
@@ -2399,7 +2598,7 @@ get_qc_diagnostics_snvindel <- function(path_to_snv_dir = NULL, path_to_indel_di
   # Build InDels per sample by caller plot
   indels_per_sample_by_caller <- ggplot2::ggplot(indels_by_caller) +
     ggplot2::geom_col(ggplot2::aes(x = SAMPLE, y = n, fill = CALLER), position = "stack") +
-    ggplot2::scale_fill_manual(name = "Callers", values = paletteer_d("colorBlindness::paletteMartin")) +
+    ggplot2::scale_fill_manual(name = "Callers", values = paletteer::paletteer_d("colorBlindness::paletteMartin")) +
     ggplot2::scale_y_continuous(expand = c(0.01,0.01), labels = scales::label_comma(), position = "left") +
     ggplot2::scale_x_discrete(position = "bottom") +
     ggplot2::coord_flip() +
@@ -3324,15 +3523,18 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 #'
 #' @param path_to_files path to location of files to be aggregated
 #' @param pattern_to_grab `ls`-style pattern used to identify files
-#' @param delim delimiter used in files to be aggregated, expected to be same in all files
-#' @param has_header indicate if files have a header line, expected to be same in all files
-#' @param cpus number of cpus for reading in data, used by `data.table::fread()`
-#' @param add_uniq_id indicate if the output data.table should include a unique identifier column, derived from input file basename
+#' @param delim delimiter used in files to be aggregated, expected to be same in all files, default: `\t`
+#' @param has_header indicate if files have a header line, expected to be same in all files, default: TRUE
+#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
+#' @param add_uniq_id indicate if the output data.table should include a unique identifier column, derived
+#'  from input file basename, default: FALSE
+#' @param genomic_sort_output indicate if the output data.table should be sorted by genomic coordinate, default: FALSE
 #'
 #' @returns data.table object with all data under preserved column construct
 #' @export
+#' @keywords core
 aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_header = TRUE,
-                            cpus = 1, add_uniq_id = FALSE) {
+                            cpus = 1, add_uniq_id = FALSE, genomic_sort_output = FALSE) {
 
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
@@ -3355,7 +3557,7 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
     # Some file formats do not explicitly have a patient/sample column or any unique identifier
     # Let's add one derived from the input file name, if needed
     if(add_uniq_id) {
-      uniq_id <- str_remove(string = input_files_to_aggregate[i], pattern = "\\..*$")
+      uniq_id <- stringr::str_remove(string = input_files_to_aggregate[i], pattern = "\\..*$")
       dt_to_add$id <- uniq_id
     }
 
@@ -3363,17 +3565,18 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
     aggregate_dt <- gUtils::rrbind(aggregate_dt, dt_to_add, as.data.table = T)
   }
 
-  # TODO: The sort functionality is bugged, aggregated file has some sort of mix-and-match of columns
-  # sort_output = TRUE,
-  # #' @param sort_output indicate if the output data.table should be sorted by genomic coordinate, BEDPE not supported yet
-  # Sort the output by genomic coordinate if desired
-  #if(sort_output) {
-  #
-  #  # TODO: BEDPE files don't translate from DT to GR with standard header, likely need gGnome junctions
-  #  # Convert to GR to run foolproof sorting
-  #  aggregate_gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(aggregate_dt))
-  #  aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
-  #}
+  # For proper genomic sorting need to convert DT to GR then back
+  if(genomic_sort_output) {
+
+    # TODO: BEDPE files don't translate from DT to GR with standard header, likely need gGnome junctions
+    aggregate_gr <- dt_to_gr(input_dt = aggregate_dt)
+    aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
+
+    # Remove strand and width columns that are added during this conversion and not part of original
+    if(sum(colnames(aggregate_dt)[4:5] == c("strand","width")) == 2) {
+      aggregate_dt <- aggregate_dt[,-c(4:5)]
+    }
+  }
   return(aggregate_dt)
 }
 
@@ -3404,6 +3607,7 @@ aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_he
 #'
 #' @returns data.table of states and assigned color
 #' @export
+#' @keywords core
 copynumber_palettier <- function(cn_states) {
   # Set the base colors for most common CNs
   common_cn_dt <- data.table::data.table("copynumber" = c(0,1,2,3),
@@ -3461,7 +3665,13 @@ copynumber_palettier <- function(cn_states) {
 #'
 #' @returns ggplot object
 #' @export
+#' @keywords workflow
 geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = "paletteer")) {
+    stop(cli::cli_alert_danger("Packages {.pkg paletteer} required for this workflow function"))
+  }
+
   # Convert the input GR to a DT
   imputed_gap_dt <- gUtils::gr2dt(imputed_gap_gr)
 
@@ -3502,8 +3712,6 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
   return(diagnostic_plot)
 }
 
-
-
 #' @name geom_deseq2_volcano
 #' @title Volcano plot for exploring results from DESeq2 differential gene expression analysis
 #'
@@ -3540,9 +3748,15 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
 #'
 #' @returns ggplot object
 #' @export
+#' @keywords workflow
 geom_deseq2_volcano <- function(deseq2_diff_expr_output, log2_fc_threshold = 2, p_adj_threshold = 0.05,
                                 n_positive_labels = 25, n_negative_labels = 25, label_vector = NULL,
                                 point_label_nudge_x = 0, point_label_nudge_y = 0, condition_label_x = 5) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("ggrepel","SummarizedExperiment"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg ggrepel, SummarizedExperiment} required for this workflow function"))
+  }
+
   # Build the set of labels to add to the plot
   if(!is.null(label_vector)) {
     point_labels <- label_vector
@@ -3638,10 +3852,22 @@ geom_deseq2_volcano <- function(deseq2_diff_expr_output, log2_fc_threshold = 2, 
 #'
 #' @returns ggplot object
 #' @export
+#' @keywords workflow
 geom_gsea_enrichment <- function(pathways, pathway_of_interest, ranked_genes) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("fgsea","patchwork"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg fgsea, patchwork} required for this workflow function"))
+  }
+
   # Check pathway GMT file path, read in
-  if(file.exists(pathways) & tools::file_ext(pathways) == "gmt") {
-    pathway_list <- fgsea::gmtPathways(pathways)
+  if(file.exists(pathways)) {
+    if(tools::file_ext(pathways) == "gmt") {
+      pathway_list <- fgsea::gmtPathways(pathways)
+    } else {
+      stop(cli::cli_alert_danger("Pathways file not in .gmt format"))
+    }
+  } else {
+    stop(cli::cli_alert_danger("Check pathways input file"))
   }
 
   # Subset to pathway gene set of interest
@@ -3759,12 +3985,19 @@ geom_gsea_enrichment <- function(pathways, pathway_of_interest, ranked_genes) {
 #'
 #' @returns ggplot object
 #' @export
+#' @keywords workflow
 geom_jabba_stats <- function(path_to_stats_dt, karyograph_dt) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("ggfittext","scales","ggpubr","patchwork"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg ggfittext, scales, ggpubr, patchwork} required for this workflow function"))
+  }
+
   # Read in stats file and transpose
   cli::cli_alert_info("Reading {.file {path_to_stats_dt}} {crayon::white(clisymbols::symbol$ellipsis)}")
   if(file.exists(path_to_stats_dt)){
     QCDF <- data.table::fread(path_to_stats_dt) %>%
       data.table::transpose(make.names = 1)
+
     QCDF[, Tier_1_Input_Junctions := as.numeric(Tier_1_Input_Junctions)]
     QCDF[, Tier_2_Input_Junctions := as.numeric(Tier_2_Input_Junctions)]
     QCDF[, Tier_3_Input_Junctions := as.numeric(Tier_3_Input_Junctions)]

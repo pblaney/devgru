@@ -29,3 +29,4 @@ workflow.
 #                                        "cnmle" = kar$segstats$cnmle))
 
 }
+\keyword{workflow}

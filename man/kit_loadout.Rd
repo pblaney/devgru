@@ -20,3 +20,4 @@ Single command to install, if needed, and load all packages used in the devgru k
 # kit_loadout(update_kit = T)
 
 }
+\keyword{core}

@@ -36,3 +36,4 @@ gUtils::dt2gr(braf_dnase_demo_dt_hg38)
 GenomeInfoDb::seqinfo(gUtils::dt2gr(braf_dnase_demo_dt_hg38))
 
 }
+\keyword{core}

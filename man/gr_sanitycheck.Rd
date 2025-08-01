@@ -32,3 +32,4 @@ gr_sanitycheck(query_gr = kras_dnase_demo_gr_hg38[,-3],
                expected_cols = c("signalValue","pValue","biospecimen","gene"))
 
 }
+\keyword{core}

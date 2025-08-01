@@ -51,3 +51,4 @@ head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "foreground"]))
 head(GenomicRanges::start(read_depth_demo_hg38))
 
 }
+\keyword{workflow}

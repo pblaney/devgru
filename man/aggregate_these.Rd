@@ -10,7 +10,8 @@ aggregate_these(
   delim = "\\t",
   has_header = TRUE,
   cpus = 1,
-  add_uniq_id = FALSE
+  add_uniq_id = FALSE,
+  genomic_sort_output = FALSE
 )
 }
 \arguments{
@@ -18,13 +19,16 @@ aggregate_these(
 
 \item{pattern_to_grab}{\code{ls}-style pattern used to identify files}
 
-\item{delim}{delimiter used in files to be aggregated, expected to be same in all files}
+\item{delim}{delimiter used in files to be aggregated, expected to be same in all files, default: \verb{\\t}}
 
-\item{has_header}{indicate if files have a header line, expected to be same in all files}
+\item{has_header}{indicate if files have a header line, expected to be same in all files, default: TRUE}
 
-\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}}
+\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}, default: 1}
 
-\item{add_uniq_id}{indicate if the output data.table should include a unique identifier column, derived from input file basename}
+\item{add_uniq_id}{indicate if the output data.table should include a unique identifier column, derived
+from input file basename, default: FALSE}
+
+\item{genomic_sort_output}{indicate if the output data.table should be sorted by genomic coordinate, default: FALSE}
 }
 \value{
 data.table object with all data under preserved column construct
@@ -33,3 +37,4 @@ data.table object with all data under preserved column construct
 Collect all files that match a specific \code{ls}-style pattern at a specific path, read them into a data.table, then aggregate
 all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation table, CNV BED, or SV BEDPE.
 }
+\keyword{core}

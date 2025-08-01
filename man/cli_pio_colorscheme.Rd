@@ -13,3 +13,4 @@ Quickly set the options for pio package CLI text output.
 cli_pio_colorscheme()
 
 }
+\keyword{core}

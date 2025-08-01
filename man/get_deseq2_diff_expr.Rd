@@ -86,3 +86,4 @@ and a transcripts per million (TPM) counts data.table.
 # dge_demo$deseq2_tpm_dt
 
 }
+\keyword{workflow}

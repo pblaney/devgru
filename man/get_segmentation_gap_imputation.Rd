@@ -51,3 +51,4 @@ that is provides cleaner foreground signal in JaBbA and GISTIC.
 # path_to_diagnostic_plots_dir = "impute_qc_plots/")
 
 }
+\keyword{workflow}

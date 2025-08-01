@@ -34,3 +34,4 @@ dt_sanitycheck(query_dt = braf_dnase_demo_dt_hg38[,-7],
                                  "pValue","biospecimen","gene"))
 
 }
+\keyword{core}

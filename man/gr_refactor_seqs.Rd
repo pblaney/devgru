@@ -33,3 +33,4 @@ GenomeInfoDb::seqinfo(example_dnase_hg38)
 GenomeInfoDb::seqinfo(gr_refactor_seqs(example_dnase_hg38))
 
 }
+\keyword{core}

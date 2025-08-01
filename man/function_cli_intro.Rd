@@ -32,3 +32,4 @@ function_cli_intro(package = "devgru",
                    parameter_x, parameter_y)
 
 }
+\keyword{core}

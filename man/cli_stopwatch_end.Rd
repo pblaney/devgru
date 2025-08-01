@@ -25,3 +25,4 @@ process_end <- cli_stopwatch_end(package = "devgru",
                                  stopwatch_start = process_start)
 
 }
+\keyword{core}

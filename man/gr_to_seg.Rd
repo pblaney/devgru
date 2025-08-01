@@ -30,3 +30,4 @@ or other \code{DNAcopy} CBS algorithm runs.
 # gr_to_seg(dryclean_seg)
 
 }
+\keyword{core}

@@ -24,3 +24,4 @@ copynumber_palettier(cn_states = seq(0,4))
 copynumber_palettier(cn_states = c(1,2,3,8))
 
 }
+\keyword{core}

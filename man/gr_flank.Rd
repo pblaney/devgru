@@ -55,3 +55,4 @@ gr_flank(input_gr = notch2,
          end_flank_boundary = GenomicRanges::end(chr1_p_arm))
 
 }
+\keyword{core}

@@ -60,3 +60,4 @@ analysis with parameters for easy styling
 # geom_deseq2_volcano(deseq2_diff_expr_output = dge_demo, label_vector = c("CCND1","MYC","MYCL"))
 
 }
+\keyword{workflow}

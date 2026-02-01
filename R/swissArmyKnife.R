@@ -58,7 +58,6 @@
 #' @import stats
 #' @import crayon
 #' @import cli
-#' @import clisymbols
 #' @import pio
 #' @import R.utils
 #' @import fishHook
@@ -95,7 +94,7 @@ tile.id=Final_epgap=Non_telomeric_Loose_Ends=RMSE_of_Coverage_and_CN=Requested_e
 Tier_1_Input_Junctions=Tier_1_Output_Junctions=Tier_2_Input_Junctions=Tier_2_Output_Junctions=NULL
 Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumber=NULL
 p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
-median_insrt=median_reads=segment=NULL
+median_insrt=median_reads=segment=reads.corrected=NULL
 
 #
 #
@@ -1172,34 +1171,247 @@ get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random
   return(final_cbs_segmentation)
 }
 
+# #' @name get_imputed_gaps_per_chromosome
+# #' @title Single chromosome run imputation of small, zero coverage gaps in CBS segmentation
+# #'
+# #' @description
+# #' Run imputation of small, zero coverage gaps in CBS segmentation using partition regression
+# #' of signal in neighborhood adjacent to the gap.
+# #' The gaps are typically small, less than 500 bp on average and inter spaced among large
+# #' segments of continuous, homogeneous signal. The gap signal is far less than expected
+# #' for real deletions, even homozygous events
+# #' Imputation greatly improves the foreground signal in downstream tools like JaBbA and GISTIC.
+# #'
+# #' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
+# #' workflow. Also, see `chrompar()` for executing in parallel.
+# #'
+# #' @param chrom_for_imputation The chromosome to run gap imputation algorithm on
+# #' @param gapless_segmentation_whitelist GenomicRanges object of segmentation after removing blacklist regions and gaps
+# #' @param segmentation_gaps GenomicRanges object of gaps from the original segmentation
+# #' @param threshold Threshold of segmentation signal to determine a gap, default: -4.95
+# #' @param structural_variant_breakpoints GenomicRanges object of individual breakpoints from sample SVs
+# #' @param sample_id Name of sample
+# #' @param make_plots Generate diagnostic plots of imputation results? default: FALSE
+# #' @param path_for_plots Path to directory to hold diagnostic plot small PNGs (~80 KB per plot)
+# #'
+# #' @returns data.table with gap imputed segmentation
+# #' @export
+# #' @keywords workflow
+# get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmentation_whitelist, segmentation_gaps, threshold = -4.95,
+#                                             structural_variant_breakpoints = NULL, sample_id, make_plots = F, path_for_plots) {
+#   # Check for Suggests libraries
+#   if (!require_namespaces(pkgs = "rpart")) {
+#     stop(cli::cli_alert_danger("Packages {.pkg rpart} required for this workflow function"))
+#   }
+#
+#   # Function CLI
+#   cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_imputation})}}")
+#
+#   # Grab chromosome specific data for run the partition regression imputation workflow
+#   gapless_whitelist_seg_per_chrom <- gapless_segmentation_whitelist %Q% (seqnames == chrom_for_imputation)
+#   gaps_per_chrom <- segmentation_gaps %Q% (seqnames == chrom_for_imputation)
+#   cli::cli_text("{crayon::red(length(gaps_per_chrom))} {clisymbols::symbol$arrow_right} Gaps to be imputed on {crayon::green({chrom_for_imputation})}")
+#
+#   if(!is.null(structural_variant_breakpoints)) {
+#     sv_bps_per_chrom <- structural_variant_breakpoints %Q% (seqnames == chrom_for_imputation)
+#   }
+#
+#   # Read in the chromosome arms regions
+#   chromosome_arms <- get_data(name_of_data = "chromosome_arms_hg38")
+#   #(function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
+#
+#   # Loop through the gaps, find the founder segments that will be used to impute the gaps
+#   imputed_gaps_per_chrom <- data.table::data.table()
+#   for(i in 1:length(gaps_per_chrom)) {
+#     # For convenience, set the gap of interest
+#     goi <- gaps_per_chrom[i]
+#
+#     # To ensure gaps will only be imputed using values from the same arm, check which arm the gap is located on
+#     gap_arm <- gUtils::gr.findoverlaps(query = goi,
+#                                        subject = chromosome_arms,
+#                                        scol = "arm")
+#     if(gap_arm$arm == "p") {
+#       arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")),
+#                           GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")))
+#     } else if(gap_arm$arm == "q") {
+#       arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")),
+#                           GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")))
+#     }
+#
+#     # Calculate the padding for each gap, total padding will be 1.5 the size of the gap
+#     padding <- round(x = GenomicRanges::width(goi) * 1.5,
+#                      digits = 0)
+#
+#     # Grab the neighborhood values around gap as the founder segments
+#     founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
+#                                                                 start_flank =  padding / 2,
+#                                                                 end_flank = padding / 2,
+#                                                                 start_flank_boundary = arm_boundaries[1],
+#                                                                 end_flank_boundary = arm_boundaries[2]),
+#                                                subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
+#                                                scol = "seg.mean")
+#
+#     # Check here if the founder segment exists as expected, the padding could be too small and
+#     # not provide neighborhood values. If so, increase the padding
+#     while(length(founder_segment) == 0) {
+#       # Increase padding
+#       cli::cli_alert_info("Previous padding {crayon::red({padding})} bp on {crayon::green({chrom_for_imputation})} not large enough {clisymbols::symbol$arrow_right} Increasing by 3x {crayon::white(clisymbols::symbol$ellipsis)}")
+#       padding <- round(x = padding * 3,
+#                        digits = 0)
+#       founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
+#                                                                   start_flank =  padding / 2,
+#                                                                   end_flank = padding / 2,
+#                                                                   start_flank_boundary = arm_boundaries[1],
+#                                                                   end_flank_boundary = arm_boundaries[2]),
+#                                                  subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
+#                                                  scol = "seg.mean")
+#     }
+#
+#     # Tile the founder segment used for imputation and add the the corresponding seg.mean to each tile
+#     partition_reg_data <- gUtils::gr.findoverlaps(query = gUtils::gr.tile(gr = founder_segment, width = 100),
+#                                                   subject = founder_segment,
+#                                                   scol = "seg.mean")
+#     # Add label for diagnostic plotting
+#     partition_reg_data$tile_type <- "founder"
+#
+#     # Fit the data with a partition regression
+#     partition_reg_fit <- rpart::rpart(data = gUtils::gr2dt(partition_reg_data), formula = seg.mean ~ start)
+#
+#     # If SV BPs are provided, check for overlap here as they will be used to provide
+#     # a more accurate location of segmentation jump
+#     goi_sv_bp_overlap <- NULL
+#     if(!is.null(structural_variant_breakpoints)) {
+#       goi_sv_bp_overlap <- gUtils::gr.findoverlaps(query = goi,
+#                                                    subject = sv_bps_per_chrom)
+#     }
+#
+#     # SV BP workflow
+#     # must check if there is an overlap, otherwise use the standard approach
+#     if(!is.null(goi_sv_bp_overlap) & length(goi_sv_bp_overlap) > 0) {
+#       # Break the original gap into disjointed segments using the SV breakpoints
+#       new_goi <- gUtils::gr.breaks(bps = goi_sv_bp_overlap, query = goi)
+#
+#       # For this approach, the new gaps will not be tiled and will individually be fit predicted
+#       imputed_sv_gaps <- GenomicRanges::GRanges()
+#       for(j in 1:length(new_goi)) {
+#         # Grab each SV gap
+#         sv_gap <- new_goi[j]
+#
+#         sv_gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(sv_gap))
+#
+#         # Add the predicted seg.mean to the tiles
+#         sv_gap$seg.mean <- as.numeric(sv_gap_rpart_pred)
+#         sv_gap$tile_type <- paste0("imputed gap", j)
+#
+#         # Add each imputed SV gap to a set
+#         imputed_sv_gaps <- gUtils::grbind(imputed_sv_gaps, sv_gap)
+#       }
+#
+#       # Visualize the gap imputation with a diagnostic plot
+#       if(make_plots == T) {
+#         diagnostic_plot <- geom_gap_imputation(original_gap = goi,
+#                                                imputed_gap_gr = gUtils::grbind(partition_reg_data, imputed_sv_gaps),
+#                                                sv_bp = goi_sv_bp_overlap)
+#         ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
+#                         plot = diagnostic_plot,
+#                         path = path_for_plots,
+#                         width = 125,
+#                         height = 75,
+#                         units = "mm",
+#                         device = "png")
+#       }
+#
+#       # Final prep before adding the imputed gaps to the final imputed set
+#       # Need to update the num.mark column to reflect it being a split of the original
+#       imputed_sv_gaps_dt <- gUtils::gr2dt(imputed_sv_gaps) %>%
+#         dplyr::rename("oldnum.mark" = num.mark) %>%
+#         dplyr::mutate("num.mark" = goi$num.mark / length(imputed_sv_gaps)) %>%
+#         dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
+#
+#       # Add to final set
+#       imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
+#                                                imputed_sv_gaps_dt)
+#
+#       # No SV BP workflow
+#     } else {
+#       # tile the gap segment to impute at intervals across the gap
+#       tiled_gap <- gUtils::gr.tile(gr = gaps_per_chrom[i], width = 100)
+#
+#       # Use the fit partition regression to predict the values at each tile across the gap
+#       gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
+#
+#       # Add the predicted seg.mean to the tiles
+#       tiled_gap$seg.mean <- as.numeric(gap_rpart_pred)
+#       # For plotting
+#       tiled_gap$tile_type <- "imputed gap"
+#
+#       # Visualize the gap imputation with a diagnostic plot
+#       if(make_plots == T & sum(GenomicRanges::width(goi)) > 25000) {
+#         diagnostic_plot <- geom_gap_imputation(original_gap = goi,
+#                                                imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
+#         ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
+#                         plot = diagnostic_plot,
+#                         path = path_for_plots,
+#                         width = 125,
+#                         height = 75,
+#                         units = "mm",
+#                         device = "png")
+#       }
+#
+#       # Final prep before adding the imputed gaps to the final imputed set
+#       # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
+#       imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "seg.mean")
+#
+#       # Convert imputed gaps to DT and make last adjustments below
+#       # also needs sample ID
+#       # num.mark, calculate by dividing the original num.mark but total new segments
+#       # subject.id
+#       imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
+#         dplyr::mutate("ID" = sample_id,
+#                       "num.mark" = goi$num.mark / length(imputed_tiled_gap)) %>%
+#         dplyr::rename("subject.id" = tile.id) %>%
+#         dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
+#
+#       # Add to final set
+#       imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
+#                                                imputed_tiled_gap_dt)
+#     }
+#   }
+#
+#   # Return the final imputed DT
+#   return(imputed_gaps_per_chrom)
+# }
+
+
+
+
+
 #' @name get_imputed_gaps_per_chromosome
-#' @title Single chromosome run imputation of small, zero coverage gaps in CBS segmentation
+#' @title Single chromosome run imputation of small, NA read gaps in fragCounter coverage
 #'
 #' @description
-#' Run imputation of small, zero coverage gaps in CBS segmentation using partition regression
+#' Run imputation of small, NA read gaps in fragCounter using partition regression
 #' of signal in neighborhood adjacent to the gap.
 #' The gaps are typically small, less than 500 bp on average and inter spaced among large
 #' segments of continuous, homogeneous signal. The gap signal is far less than expected
 #' for real deletions, even homozygous events
 #' Imputation greatly improves the foreground signal in downstream tools like JaBbA and GISTIC.
 #'
-#' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
+#' Note, this function was designed to be run as part of the `get_cov_gap_imputation()`
 #' workflow. Also, see `chrompar()` for executing in parallel.
 #'
 #' @param chrom_for_imputation The chromosome to run gap imputation algorithm on
-#' @param gapless_segmentation_whitelist GenomicRanges object of segmentation after removing blacklist regions and gaps
-#' @param segmentation_gaps GenomicRanges object of gaps from the original segmentation
-#' @param threshold Threshold of segmentation signal to determine a gap, default: -4.95
-#' @param structural_variant_breakpoints GenomicRanges object of individual breakpoints from sample SVs
+#' @param gapless_coverage_whitelist GenomicRanges object of coverage after removing blacklist regions and gaps
+#' @param coverage_gaps GenomicRanges object of gaps from the original coverage
 #' @param sample_id Name of sample
 #' @param make_plots Generate diagnostic plots of imputation results? default: FALSE
 #' @param path_for_plots Path to directory to hold diagnostic plot small PNGs (~80 KB per plot)
 #'
-#' @returns data.table with gap imputed segmentation
+#' @returns data.table with gap imputed coverage
 #' @export
 #' @keywords workflow
-get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmentation_whitelist, segmentation_gaps, threshold = -4.95,
-                                            structural_variant_breakpoints = NULL, sample_id, make_plots = F, path_for_plots) {
+get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_coverage_whitelist, coverage_gaps,
+                                            sample_id, make_plots = F, path_for_plots = NULL) {
   # Check for Suggests libraries
   if (!require_namespaces(pkgs = "rpart")) {
     stop(cli::cli_alert_danger("Packages {.pkg rpart} required for this workflow function"))
@@ -1209,17 +1421,12 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
   cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_imputation})}}")
 
   # Grab chromosome specific data for run the partition regression imputation workflow
-  gapless_whitelist_seg_per_chrom <- gapless_segmentation_whitelist %Q% (seqnames == chrom_for_imputation)
-  gaps_per_chrom <- segmentation_gaps %Q% (seqnames == chrom_for_imputation)
+  gapless_whitelist_cov_per_chrom <- gapless_coverage_whitelist %Q% (seqnames == chrom_for_imputation)
+  gaps_per_chrom <- coverage_gaps %Q% (seqnames == chrom_for_imputation)
   cli::cli_text("{crayon::red(length(gaps_per_chrom))} {clisymbols::symbol$arrow_right} Gaps to be imputed on {crayon::green({chrom_for_imputation})}")
-
-  if(!is.null(structural_variant_breakpoints)) {
-    sv_bps_per_chrom <- structural_variant_breakpoints %Q% (seqnames == chrom_for_imputation)
-  }
 
   # Read in the chromosome arms regions
   chromosome_arms <- get_data(name_of_data = "chromosome_arms_hg38")
-  #(function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
 
   # Loop through the gaps, find the founder segments that will be used to impute the gaps
   imputed_gaps_per_chrom <- data.table::data.table()
@@ -1240,7 +1447,7 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
     }
 
     # Calculate the padding for each gap, total padding will be 1.5 the size of the gap
-    padding <- round(x = GenomicRanges::width(goi) * 1.5,
+    padding <- round(x = GenomicRanges::width(goi) * 5,
                      digits = 0)
 
     # Grab the neighborhood values around gap as the founder segments
@@ -1249,8 +1456,8 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
                                                                 end_flank = padding / 2,
                                                                 start_flank_boundary = arm_boundaries[1],
                                                                 end_flank_boundary = arm_boundaries[2]),
-                                               subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
-                                               scol = "seg.mean")
+                                               subject = gapless_whitelist_cov_per_chrom %Q% (!is.na(reads.corrected)),
+                                               scol = "reads.corrected")
 
     # Check here if the founder segment exists as expected, the padding could be too small and
     # not provide neighborhood values. If so, increase the padding
@@ -1264,124 +1471,78 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmen
                                                                   end_flank = padding / 2,
                                                                   start_flank_boundary = arm_boundaries[1],
                                                                   end_flank_boundary = arm_boundaries[2]),
-                                                 subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
-                                                 scol = "seg.mean")
+                                                 subject = gapless_whitelist_cov_per_chrom %Q% (!is.na(reads.corrected)),
+                                                 scol = "reads.corrected")
     }
 
     # Tile the founder segment used for imputation and add the the corresponding seg.mean to each tile
     partition_reg_data <- gUtils::gr.findoverlaps(query = gUtils::gr.tile(gr = founder_segment, width = 100),
                                                   subject = founder_segment,
-                                                  scol = "seg.mean")
+                                                  scol = "reads.corrected")
     # Add label for diagnostic plotting
     partition_reg_data$tile_type <- "founder"
 
     # Fit the data with a partition regression
-    partition_reg_fit <- rpart::rpart(data = gUtils::gr2dt(partition_reg_data), formula = seg.mean ~ start)
+    partition_reg_fit <- rpart::rpart(data = gUtils::gr2dt(partition_reg_data), formula = reads.corrected ~ start)
 
-    # If SV BPs are provided, check for overlap here as they will be used to provide
-    # a more accurate location of segmentation jump
-    goi_sv_bp_overlap <- NULL
-    if(!is.null(structural_variant_breakpoints)) {
-      goi_sv_bp_overlap <- gUtils::gr.findoverlaps(query = goi,
-                                                   subject = sv_bps_per_chrom)
+    # tile the gap segment to impute at intervals across the gap
+    tiled_gap <- gUtils::gr.tile(gr = gaps_per_chrom[i], width = 100)
+
+    # Use the fit partition regression to predict the values at each tile across the gap
+    gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
+
+    # Add the predicted seg.mean to the tiles
+    tiled_gap$reads.corrected <- as.numeric(gap_rpart_pred)
+    # For plotting
+    tiled_gap$tile_type <- "imputed gap"
+
+    # Visualize the gap imputation with a diagnostic plot
+    if(make_plots == T & i %% 250 == 0) { # & sum(GenomicRanges::width(goi)) > 25000
+      diagnostic_plot <- geom_gap_imputation(original_gap = goi,
+                                             imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
+      ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
+                      plot = diagnostic_plot,
+                      path = path_for_plots,
+                      width = 125,
+                      height = 75,
+                      units = "mm",
+                      device = "png")
     }
 
-    # SV BP workflow
-    # must check if there is an overlap, otherwise use the standard approach
-    if(!is.null(goi_sv_bp_overlap) & length(goi_sv_bp_overlap) > 0) {
-      # Break the original gap into disjointed segments using the SV breakpoints
-      new_goi <- gUtils::gr.breaks(bps = goi_sv_bp_overlap, query = goi)
+    # Final prep before adding the imputed gaps to the final imputed set
+    # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
+    imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "reads.corrected")
 
-      # For this approach, the new gaps will not be tiled and will individually be fit predicted
-      imputed_sv_gaps <- GenomicRanges::GRanges()
-      for(j in 1:length(new_goi)) {
-        # Grab each SV gap
-        sv_gap <- new_goi[j]
+    # Convert imputed gaps to DT and make last adjustments below
+    # also needs sample ID
+    # num.mark, calculate by dividing the original num.mark but total new segments
+    # subject.id
+    imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
+      dplyr::rename("subject.id" = tile.id) %>%
+      dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,reads.corrected)
 
-        sv_gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(sv_gap))
-
-        # Add the predicted seg.mean to the tiles
-        sv_gap$seg.mean <- as.numeric(sv_gap_rpart_pred)
-        sv_gap$tile_type <- paste0("imputed gap", j)
-
-        # Add each imputed SV gap to a set
-        imputed_sv_gaps <- gUtils::grbind(imputed_sv_gaps, sv_gap)
-      }
-
-      # Visualize the gap imputation with a diagnostic plot
-      if(make_plots == T) {
-        diagnostic_plot <- geom_gap_imputation(original_gap = goi,
-                                               imputed_gap_gr = gUtils::grbind(partition_reg_data, imputed_sv_gaps),
-                                               sv_bp = goi_sv_bp_overlap)
-        ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
-                        plot = diagnostic_plot,
-                        path = path_for_plots,
-                        width = 125,
-                        height = 75,
-                        units = "mm",
-                        device = "png")
-      }
-
-      # Final prep before adding the imputed gaps to the final imputed set
-      # Need to update the num.mark column to reflect it being a split of the original
-      imputed_sv_gaps_dt <- gUtils::gr2dt(imputed_sv_gaps) %>%
-        dplyr::rename("oldnum.mark" = num.mark) %>%
-        dplyr::mutate("num.mark" = goi$num.mark / length(imputed_sv_gaps)) %>%
-        dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
-
-      # Add to final set
-      imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
-                                               imputed_sv_gaps_dt)
-
-      # No SV BP workflow
-    } else {
-      # tile the gap segment to impute at intervals across the gap
-      tiled_gap <- gUtils::gr.tile(gr = gaps_per_chrom[i], width = 100)
-
-      # Use the fit partition regression to predict the values at each tile across the gap
-      gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
-
-      # Add the predicted seg.mean to the tiles
-      tiled_gap$seg.mean <- as.numeric(gap_rpart_pred)
-      # For plotting
-      tiled_gap$tile_type <- "imputed gap"
-
-      # Visualize the gap imputation with a diagnostic plot
-      if(make_plots == T & sum(GenomicRanges::width(goi)) > 25000) {
-        diagnostic_plot <- geom_gap_imputation(original_gap = goi,
-                                               imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
-        ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
-                        plot = diagnostic_plot,
-                        path = path_for_plots,
-                        width = 125,
-                        height = 75,
-                        units = "mm",
-                        device = "png")
-      }
-
-      # Final prep before adding the imputed gaps to the final imputed set
-      # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
-      imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "seg.mean")
-
-      # Convert imputed gaps to DT and make last adjustments below
-      # also needs sample ID
-      # num.mark, calculate by dividing the original num.mark but total new segments
-      # subject.id
-      imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
-        dplyr::mutate("ID" = sample_id,
-                      "num.mark" = goi$num.mark / length(imputed_tiled_gap)) %>%
-        dplyr::rename("subject.id" = tile.id) %>%
-        dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
-
-      # Add to final set
-      imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
-                                               imputed_tiled_gap_dt)
-    }
+    # Add to final set
+    imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
+                                             imputed_tiled_gap_dt)
   }
 
   # Return the final imputed DT
   return(imputed_gaps_per_chrom)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #' @name get_segmentation_gap_imputation
 #' @title Generate gap imputed segmentation from CBS output
@@ -1503,6 +1664,107 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
 
   return(final_imputed_segmentation)
 }
+
+
+
+
+
+
+#' @name get_cov_gap_imputation
+#' @title Generate gap imputed coverage from fragCounter output
+#'
+#' @description
+#' Given fragCounter coverage with small, zero signal gaps, run neighbrohood-based partition
+#' regression gap imputation in a parallel manner to produce a gap imputed coverage file
+#' that is provides cleaner foreground signal in JaBbA and GISTIC.
+#'
+#' @param path_to_fragcounter_cov Path to fragCounter coverage RDS
+#' @param cpus Number of CPUs to use for parallel execution, default: 1
+#' @param make_diagnostic_plots Generate diagnostic plots for each imputed gap, default: FALSE
+#' @param path_to_diagnostic_plots_dir Path to directory to place diagnostic plot PNGs
+#' @param exp_colnames Expected column names for coverage input data.table
+#' @param verbose Output CLI during workflow, default: TRUE
+#'
+#' @returns GenomicRanges object with gap imputed coverage
+#' @export
+get_cov_gap_imputation <- function(path_to_fragcounter_cov, cpus = 1, make_diagnostic_plots = FALSE,
+                                   path_to_diagnostic_plots_dir = NULL, exp_colnames = c("reads","gc","map","reads.corrected"),
+                                   verbose = T) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = c("rpart","gGnome"))) {
+    stop(cli::cli_alert_danger("Packages {.pkg rpart, gGnome} required for this workflow function"))
+  }
+
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_cov_gap_imputation",
+                       path_to_fragcounter_cov, cpus, make_diagnostic_plots, path_to_diagnostic_plots_dir, exp_colnames)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_cov_gap_imputation")
+
+  # Read in dryclean CBS segmentation
+  cli::cli_alert_info("Reading {.file {path_to_fragcounter_cov}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  sample_id <- basename(stringr::str_remove(string = path_to_fragcounter_cov, pattern = "\\..*fragcounter.cov.rds"))
+  fragcounter_coverage <- readRDS(file = path_to_fragcounter_cov)
+
+  # Check if input if fragCounter GR
+  if(gr_sanitycheck(query_gr = fragcounter_coverage, expected_cols = exp_colnames)) {
+    cli::cli_alert_success("Success")
+  } else {
+    stop(cli::cli_alert_danger("Check input"))
+  }
+
+  # Read in the exclusion regions
+  exclusion_regions <- get_data(name_of_data = "exclusion_regions_hg38")
+
+  # Get the whitelist regions
+  fragcounter_coverage_whitelist <- gUtils::gr.setdiff(query = fragcounter_coverage,
+                                                       subject = exclusion_regions)
+
+  # Extract the gaps from the whitelist regions
+  gaps_to_impute <- fragcounter_coverage_whitelist %Q% (is.na(reads.corrected))
+
+  # Get the gapless whitelist regions
+  fragcounter_coverage_whitelist_gapless <- gUtils::gr.setdiff(query = fragcounter_coverage_whitelist,
+                                                               subject = gaps_to_impute)
+
+  # Get the list of chromosomes to iterate over
+  chrom_iter_list <- gtools::mixedsort(unique(as.character(GenomeInfoDb::seqnames(gaps_to_impute))))
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Partition Regression imputation with rpart v", utils::packageVersion("rpart")))
+  cat("\n")
+
+  # Parallel execution of partition regression per chromosome and merging to single GR object
+  final_imputed_gaps <- chrompar(par_function = get_imputed_gaps_per_chromosome, par_chromosomes = chrom_iter_list,
+                                 par_cpus = cpus, par_packages = c("gUtils", "devgru"),
+                                 fragcounter_coverage_whitelist_gapless, gaps_to_impute,
+                                 sample_id, make_diagnostic_plots, path_to_diagnostic_plots_dir)
+
+  # Combine the imputed gaps with the whitelist gapless regions to make final set
+  final_imputed_segmentation <- GenomicRanges::sort(gUtils::grbind(fragcounter_coverage_whitelist_gapless,
+                                                                   final_imputed_gaps))
+
+  # Return the GR of imputed gaps output for easy downstream use
+  cli::cli_alert_success("Imputation finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_cov_gap_imputation",
+                    stopwatch_start = process_start)
+
+  return(final_imputed_segmentation)
+}
+
+
+
+
+
+
+
+
+
 
 
 #' @name get_deseq2_diff_expr
@@ -2050,7 +2312,7 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
   # Save the QC stats table
   cli::cli_alert_info("Writing qc_stats.txt to {.file {jabba_workdir_path}} {crayon::white(clisymbols::symbol$ellipsis)}")
   data.table::fwrite(x = qc_stats_dt,
-                     file = paste0(jabba_workdir_path, "qc_stats.txt"),
+                     file = paste0(jabba_workdir_path, tumor_normal_id, "-qc_stats.txt"),
                      sep = "\t",
                      col.names = T)
   cli::cli_alert_success("Success")
@@ -2099,6 +2361,7 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
 #' @param seq_center Institute/site where sequencing was performed
 #' @param seq_protocol Type of sequencing protocol for display purposes, default: WGS
 #' @param output_path Location to save report PDF, default: `getwd()`
+#' @param verbose Output CLI during workflow, default: TRUE
 #'
 #' @examples
 #' # After downloading `*.qc.summary.txt` Alfred output file from the MGP1000 run,
@@ -2115,7 +2378,7 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
 #' @keywords workflow
 get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_normal_dir = NULL,
                                          dataset_title = "", seq_center = "", seq_protocol = "WGS",
-                                         output_path = getwd()) {
+                                         output_path = getwd(), verbose = T) {
   # Check for Suggests libraries
   if(!require_namespaces(pkgs = c("paletteer","scales","ggridges","patchwork"))) {
     stop(cli::cli_alert_danger("Packages {.pkg paletteer, scales, ggridges, patchwork} required for this workflow function"))
@@ -2427,10 +2690,10 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
                                subtitle = paste0("Sequencing Center: ", seq_center, "\nQC Report render date: ", Sys.Date()),
                                caption = paste0("Tumor samples: ", path_to_tumor_dir, "\n",
                                                 "Normal samples: ", path_to_normal_dir, "\n"),
-                               theme = theme(plot.title = element_text(size = 16),
-                                             plot.subtitle = element_text(size = 14),
-                                             plot.caption = element_text(size = 11,
-                                                                         hjust = 0)))
+                               theme = ggplot2::theme(plot.title = element_text(size = 16),
+                                                      plot.subtitle = element_text(size = 14),
+                                                      plot.caption = element_text(size = 9,
+                                                                                  hjust = 0)))
   # Export the plot
   diagnostic_plot_name <- paste0("alignmentQCDiagnostics_", dataset_title, ".pdf")
   cli::cli_alert_success("Saving diagnostic plots to {.file {paste0(output_path,diagnostic_plot_name)}}")
@@ -3653,20 +3916,17 @@ copynumber_palettier <- function(cn_states) {
 #'
 #' @param original_gap GenomicRanges object of gap
 #' @param imputed_gap_gr GenomicRanges object of imputed values across gap
-#' @param sv_bp GenomicRanges object of structural variant breakpoint that falls within
-#'  the original gap, default: NULL
 #'
 #' @examples
 #' # Snippet from within the function `` that calls this geom
 #' # geom_gap_imputation_diagnostic(
 #' # original_gap = gap_of_interest,
-#' # imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps),
-#' # sv_bp = goi_sv_bp_overlap)
+#' # imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps))
 #'
 #' @returns ggplot object
 #' @export
 #' @keywords workflow
-geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
+geom_gap_imputation <- function(original_gap, imputed_gap_gr) { #sv_bp = NULL
   # Check for Suggests libraries
   if (!require_namespaces(pkgs = "paletteer")) {
     stop(cli::cli_alert_danger("Packages {.pkg paletteer} required for this workflow function"))
@@ -3677,9 +3937,9 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
 
   # Build the plot starting with points for the segments
   diagnostic_plot <- ggplot2::ggplot(data = imputed_gap_dt) +
-    ggplot2::geom_point(aes(x = end, y = seg.mean, color = tile_type), size = 3) +
+    ggplot2::geom_point(aes(x = end, y = reads.corrected, color = tile_type), size = 3) +
     ggplot2::scale_color_manual(name = NULL, values = paletteer::paletteer_d("ggthemr::pale")) +
-    ggplot2::geom_step(aes(x = end, y = seg.mean), color = "cyan", linewidth = 1.5) +
+    ggplot2::geom_step(aes(x = end, y = reads.corrected), color = "cyan", linewidth = 1.5) +
     ggplot2::labs(title = paste0("Gap at ", gUtils::gr.string(original_gap), " (", GenomicRanges::width(original_gap), " bp)"),
                   x = paste0(stringr::str_to_title(as.character(GenomeInfoDb::seqnames(original_gap)@values)), " genomic position"),
                   y = "Seg. Mean") +
@@ -3698,16 +3958,16 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr, sv_bp = NULL) {
                    axis.title = element_text(size = 11))
 
   # Add marker to show where the SV BP is
-  if(!is.null(sv_bp)) {
-    diagnostic_plot <- diagnostic_plot +
-      ggplot2::annotate(geom = "point",
-                        x = GenomicRanges::start(sv_bp),
-                        y =  min(imputed_gap_dt$seg.mean),
-                        color = "tan2",
-                        size = 4.5,
-                        shape = 17,
-                        alpha = 0.8)
-  }
+  #if(!is.null(sv_bp)) {
+  #  diagnostic_plot <- diagnostic_plot +
+  #    ggplot2::annotate(geom = "point",
+  #                      x = GenomicRanges::start(sv_bp),
+  #                      y =  min(imputed_gap_dt$seg.mean),
+  #                     color = "tan2",
+  #                      size = 4.5,
+  #                      shape = 17,
+  #                      alpha = 0.8)
+  #}
   # Return the final plot
   return(diagnostic_plot)
 }

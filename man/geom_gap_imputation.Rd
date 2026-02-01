@@ -4,15 +4,12 @@
 \alias{geom_gap_imputation}
 \title{Diagnostic plot used for reviewing the imputation of gaps in segmentation}
 \usage{
-geom_gap_imputation(original_gap, imputed_gap_gr, sv_bp = NULL)
+geom_gap_imputation(original_gap, imputed_gap_gr)
 }
 \arguments{
 \item{original_gap}{GenomicRanges object of gap}
 
 \item{imputed_gap_gr}{GenomicRanges object of imputed values across gap}
-
-\item{sv_bp}{GenomicRanges object of structural variant breakpoint that falls within
-the original gap, default: NULL}
 }
 \value{
 ggplot object
@@ -28,8 +25,7 @@ workflow.
 # Snippet from within the function `` that calls this geom
 # geom_gap_imputation_diagnostic(
 # original_gap = gap_of_interest,
-# imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps),
-# sv_bp = goi_sv_bp_overlap)
+# imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps))
 
 }
 \keyword{workflow}

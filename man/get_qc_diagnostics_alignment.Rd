@@ -10,7 +10,8 @@ get_qc_diagnostics_alignment(
   dataset_title = "",
   seq_center = "",
   seq_protocol = "WGS",
-  output_path = getwd()
+  output_path = getwd(),
+  verbose = T
 )
 }
 \arguments{
@@ -25,6 +26,8 @@ get_qc_diagnostics_alignment(
 \item{seq_protocol}{Type of sequencing protocol for display purposes, default: WGS}
 
 \item{output_path}{Location to save report PDF, default: \code{getwd()}}
+
+\item{verbose}{Output CLI during workflow, default: TRUE}
 }
 \value{
 Patchwork 'quilt'-like plot of ggplots

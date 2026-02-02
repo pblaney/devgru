@@ -154,7 +154,7 @@ require_namespaces <- function(pkgs) {
 #' @keywords internal
 get_data <- function(name_of_data) {
   e <- new.env()
-  name <- utils::data(name_of_data, envir = e)[1]
+  name <- utils::data(list = name_of_data, envir = e)[1]
   e[[name]]
 }
 

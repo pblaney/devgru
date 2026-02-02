@@ -71,7 +71,7 @@
 #' @importFrom S4Vectors mcols
 #' @importFrom Biostrings toString
 #' @importFrom doParallel registerDoParallel
-#' @importFrom paint paint
+#' @importFrom pillar glimpse
 #' @importFrom reshape2 melt
 #' @importFrom purrr as_vector
 #' @importFrom hms hms
@@ -405,7 +405,7 @@ cli_stopwatch_end <- function(package = "devgru", function_name, stopwatch_start
   hms_table <- stringr::str_split(string = hms::hms(stopwatch_end[3]), pattern = ":", simplify = T)
   colnames(hms_table) <- c("hours","minutes","seconds")
   cli::cli_alert_info("Duration {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(data.table::as.data.table(hms_table))
+  pillar::glimpse(data.table::as.data.table(hms_table))
 }
 
 
@@ -512,9 +512,8 @@ kit_loadout <- function(update_kit = F) {
   cat("\n")
   cli::cli_alert_info("Building the {.pkg devgru} kit {crayon::white(clisymbols::symbol$ellipsis)}")
   cli::cli_alert_info("Loadout currently includes:")
-  options(paint_max_width = 1000)
-  paint::paint(gr_core_pkgs)
-  paint::paint(util_core_pkgs)
+  pillar::glimpse(gr_core_pkgs)
+  pillar::glimpse(util_core_pkgs)
   # Load the packages with librarian
   if(update_kit) {
     pak::pkg_install(pkg = loadout, upgrade = update_kit)
@@ -1861,7 +1860,7 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
   # Read in all raw counts input file, remove any rows with empty or NA cells for gene symbol/Ensembl ID if provided
   # then map the provided Ensembl IDs to the hg38 reference using gene universe
   cli::cli_text("{crayon::green('Gene Universe')} {clisymbols::symbol$arrow_right} used for final gene symbol mapping {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(gUtils::gr2dt(gene_universe))
+  pillar::glimpse(gUtils::gr2dt(gene_universe))
   cat("\n")
 
   cli::cli_alert_info("Reading {.file {counts_file_path}} {crayon::white(clisymbols::symbol$ellipsis)}")
@@ -1977,11 +1976,11 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
                              stringr::str_replace(pattern = x_condition, replacement = "condition"))
 
   cli::cli_text("{crayon::green('Conditions')} {clisymbols::symbol$arrow_right} final conditions data {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(formula_conditions)
+  pillar::glimpse(formula_conditions)
   cat("\n")
 
   cli::cli_text("{crayon::green('Counts')} {clisymbols::symbol$arrow_right} final filtered transcript count data {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(filtered_formula_counts)
+  pillar::glimpse(filtered_formula_counts)
   cat("\n")
 
   # Run DESeq2
@@ -2437,8 +2436,8 @@ get_qc_diagnostics_alignment <- function(path_to_tumor_dir = NULL, path_to_norma
 
   # Sanity check if there is no match between normal/tumor samples
   cli::cli_alert_info("Quick view of samples for sanity cross-check {crayon::white(clisymbols::symbol$ellipsis)}")
-  paint::paint(df = data.frame("Tumor" = tumor_alfreds$Sample))
-  paint::paint(df = data.frame("Normal" = normal_alfreds$Sample))
+  pillar::glimpse(data.frame("Tumor" = tumor_alfreds$Sample))
+  pillar::glimpse(data.frame("Normal" = normal_alfreds$Sample))
 
   # Combine the Alfred QC metrics
   cli::cli_alert_info("Merging tumor and normal alignment metrics {crayon::white(clisymbols::symbol$ellipsis)}")
@@ -3079,7 +3078,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
   } else if(length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)) > 0) {
     message("Warning: Detected ", length(dplyr::setdiff(x = indels$SAMPLE, y = snvs$SAMPLE)), " samples in InDel sample set NOT in SNV sample set ...")
     setdiff_samples <- indels$SAMPLE[which(!indels$SAMPLE %in% unique(snvs$SAMPLE))]
-    paint::paint(df = data.frame("Missing_Samples" = setdiff_samples))
+    pillar::glimpse(data.frame("Missing_Samples" = setdiff_samples))
     message("Recommend inspection ...")
   }
 
@@ -3103,7 +3102,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
     message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
     message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
     message("Special case filter to maintain all calls for genes of interest ...")
-    paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
+    pillar::glimpse(data.frame("Discovery_Genes" = discovery_genes))
 
     consensus_non_discovery_snvs <- snvs %>%
       dplyr::filter(!nearest_gene %in% discovery_genes) %>%
@@ -3124,7 +3123,7 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
     message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
     message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
     message("Special case filter to strictly filter specific samples with +1 to consensus filters ...")
-    paint::paint(df = data.frame("Strict_Samples" = strict_samples))
+    pillar::glimpse(data.frame("Strict_Samples" = strict_samples))
 
     consensus_non_strict_snvs <- snvs %>%
       dplyr::filter(!SAMPLE %in% strict_samples) %>%
@@ -3147,9 +3146,9 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
     message("Maintaining SNVs with consensus >= ", snv_consensus_filter,  " ...")
     message("Maintaining InDels with consensus >= ", indel_consensus_filter,  " ...")
     message("Special case filter to maintain all calls for genes of interest ...")
-    paint::paint(df = data.frame("Discovery_Genes" = discovery_genes))
+    pillar::glimpse(data.frame("Discovery_Genes" = discovery_genes))
     message("Special case filter to strictly filter specific samples with +1 to consensus filters ...")
-    paint::paint(df = data.frame("Strict_Samples" = strict_samples))
+    pillar::glimpse(data.frame("Strict_Samples" = strict_samples))
 
     consensus_non_discovery_strict_snvs <- snvs %>%
       dplyr::filter(!SAMPLE %in% strict_samples) %>%
@@ -3228,13 +3227,13 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
   # Final output
   if(return_type == "maf.lite") {
     message("MAF-lite generated ...")
-    paint::paint(hq_muts_maf_lite_dt)
+    pillar::glimpse(hq_muts_maf_lite_dt)
     return(hq_muts_maf_lite_dt)
 
   # return the non-transformed post-filtered mutation table for QC
   } else if(return_type == "data.table") {
     message("Mutation table generated ...")
-    paint::paint(hq_muts)
+    pillar::glimpse(hq_muts)
     return(hq_muts)
   }
 }

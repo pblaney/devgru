@@ -27,7 +27,6 @@ Imports:
     cli,
     crayon,
     pio,
-    paint,
     pak,
     librarian,
     hms,
@@ -47,7 +46,8 @@ Imports:
     Biostrings,
     gtools,
     ggplot2,
-    fishHook
+    fishHook,
+    pillar
 Suggests:
     scales,
     paletteer,

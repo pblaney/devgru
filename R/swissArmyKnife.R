@@ -1474,7 +1474,7 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_covera
                                                  scol = "reads.corrected")
     }
 
-    # Tile the founder segment used for imputation and add the the corresponding seg.mean to each tile
+    # Tile the founder segment used for imputation and add the the corresponding corrected read-depth ratio to each tile
     partition_reg_data <- gUtils::gr.findoverlaps(query = gUtils::gr.tile(gr = founder_segment, width = 100),
                                                   subject = founder_segment,
                                                   scol = "reads.corrected")
@@ -1490,13 +1490,13 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_covera
     # Use the fit partition regression to predict the values at each tile across the gap
     gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
 
-    # Add the predicted seg.mean to the tiles
+    # Add the predicted corrected read-depth ratio to the tiles
     tiled_gap$reads.corrected <- as.numeric(gap_rpart_pred)
     # For plotting
     tiled_gap$tile_type <- "imputed gap"
 
     # Visualize the gap imputation with a diagnostic plot
-    if(make_plots == T & i %% 250 == 0) { # & sum(GenomicRanges::width(goi)) > 25000
+    if(make_plots == T & i %% 200 == 0) {
       diagnostic_plot <- geom_gap_imputation(original_gap = goi,
                                              imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
       ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
@@ -1509,13 +1509,10 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_covera
     }
 
     # Final prep before adding the imputed gaps to the final imputed set
-    # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
+    # Reduce the tiled gap to the minimum set of contiguous segments based on the change in corrected read-depth ratio
     imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "reads.corrected")
 
     # Convert imputed gaps to DT and make last adjustments below
-    # also needs sample ID
-    # num.mark, calculate by dividing the original num.mark but total new segments
-    # subject.id
     imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
       dplyr::rename("subject.id" = tile.id) %>%
       dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,reads.corrected)
@@ -1690,8 +1687,8 @@ get_cov_gap_imputation <- function(path_to_fragcounter_cov, cpus = 1, make_diagn
                                    path_to_diagnostic_plots_dir = NULL, exp_colnames = c("reads","gc","map","reads.corrected"),
                                    verbose = T) {
   # Check for Suggests libraries
-  if (!require_namespaces(pkgs = c("rpart","gGnome"))) {
-    stop(cli::cli_alert_danger("Packages {.pkg rpart, gGnome} required for this workflow function"))
+  if (!require_namespaces(pkgs = "rpart")) {
+    stop(cli::cli_alert_danger("Packages {.pkg rpart} required for this workflow function"))
   }
 
   # Main Workflow Function CLI
@@ -1724,7 +1721,7 @@ get_cov_gap_imputation <- function(path_to_fragcounter_cov, cpus = 1, make_diagn
                                                        subject = exclusion_regions)
 
   # Extract the gaps from the whitelist regions
-  gaps_to_impute <- fragcounter_coverage_whitelist %Q% (is.na(reads.corrected))
+  gaps_to_impute <- GenomicRanges::reduce(fragcounter_coverage_whitelist %Q% (is.na(reads.corrected)))
 
   # Get the gapless whitelist regions
   fragcounter_coverage_whitelist_gapless <- gUtils::gr.setdiff(query = fragcounter_coverage_whitelist,

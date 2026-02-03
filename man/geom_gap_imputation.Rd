@@ -2,7 +2,7 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{geom_gap_imputation}
 \alias{geom_gap_imputation}
-\title{Diagnostic plot used for reviewing the imputation of gaps in segmentation}
+\title{Diagnostic plot used for reviewing the imputation of gaps in coverage profile}
 \usage{
 geom_gap_imputation(original_gap, imputed_gap_gr)
 }
@@ -16,16 +16,16 @@ ggplot object
 }
 \description{
 Creates a simple ggpplot2 style plot for quickly reviewing how the imputation of
-each gap identified in a segmentation file
+each gap identified in a coverage file
 
-Note, this function was designed to be run as part of the \code{get_segmentation_gap_imputation()}
+Note, this function was designed to be run as part of the \code{get_cov_gap_imputation()}
 workflow.
 }
 \examples{
 # Snippet from within the function `` that calls this geom
 # geom_gap_imputation_diagnostic(
 # original_gap = gap_of_interest,
-# imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps))
+# imputed_gap_gr = partition_regression_data)
 
 }
 \keyword{workflow}

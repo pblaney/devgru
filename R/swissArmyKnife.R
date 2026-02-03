@@ -3904,13 +3904,13 @@ copynumber_palettier <- function(cn_states) {
 }
 
 #' @name geom_gap_imputation
-#' @title Diagnostic plot used for reviewing the imputation of gaps in segmentation
+#' @title Diagnostic plot used for reviewing the imputation of gaps in coverage profile
 #'
 #' @description
 #' Creates a simple ggpplot2 style plot for quickly reviewing how the imputation of
-#' each gap identified in a segmentation file
+#' each gap identified in a coverage file
 #'
-#' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
+#' Note, this function was designed to be run as part of the `get_cov_gap_imputation()`
 #' workflow.
 #'
 #' @param original_gap GenomicRanges object of gap
@@ -3920,12 +3920,12 @@ copynumber_palettier <- function(cn_states) {
 #' # Snippet from within the function `` that calls this geom
 #' # geom_gap_imputation_diagnostic(
 #' # original_gap = gap_of_interest,
-#' # imputed_gap_gr = gUtils::grbind(partition_regression_data, imputed_sv_gaps))
+#' # imputed_gap_gr = partition_regression_data)
 #'
 #' @returns ggplot object
 #' @export
 #' @keywords workflow
-geom_gap_imputation <- function(original_gap, imputed_gap_gr) { #sv_bp = NULL
+geom_gap_imputation <- function(original_gap, imputed_gap_gr) {
   # Check for Suggests libraries
   if (!require_namespaces(pkgs = "paletteer")) {
     stop(cli::cli_alert_danger("Packages {.pkg paletteer} required for this workflow function"))
@@ -3941,7 +3941,7 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr) { #sv_bp = NULL
     ggplot2::geom_step(aes(x = end, y = reads.corrected), color = "cyan", linewidth = 1.5) +
     ggplot2::labs(title = paste0("Gap at ", gUtils::gr.string(original_gap), " (", GenomicRanges::width(original_gap), " bp)"),
                   x = paste0(stringr::str_to_title(as.character(GenomeInfoDb::seqnames(original_gap)@values)), " genomic position"),
-                  y = "Seg. Mean") +
+                  y = "Corrected Read-Depth Ratio") +
     ggplot2::theme(panel.background = element_blank(),
                    panel.border = element_rect(fill = "transparent"),
                    panel.grid.major.x = element_blank(),
@@ -3956,17 +3956,6 @@ geom_gap_imputation <- function(original_gap, imputed_gap_gr) { #sv_bp = NULL
                    axis.text = element_text(size = 10),
                    axis.title = element_text(size = 11))
 
-  # Add marker to show where the SV BP is
-  #if(!is.null(sv_bp)) {
-  #  diagnostic_plot <- diagnostic_plot +
-  #    ggplot2::annotate(geom = "point",
-  #                      x = GenomicRanges::start(sv_bp),
-  #                      y =  min(imputed_gap_dt$seg.mean),
-  #                     color = "tan2",
-  #                      size = 4.5,
-  #                      shape = 17,
-  #                      alpha = 0.8)
-  #}
   # Return the final plot
   return(diagnostic_plot)
 }

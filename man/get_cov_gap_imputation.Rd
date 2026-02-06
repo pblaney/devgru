@@ -22,7 +22,7 @@ get_cov_gap_imputation(
 
 \item{path_to_diagnostic_plots_dir}{Path to directory to place diagnostic plot PNGs}
 
-\item{exp_colnames}{Expected column names for coverage input data.table}
+\item{exp_colnames}{Expected column names for coverage input GR}
 
 \item{verbose}{Output CLI during workflow, default: TRUE}
 }

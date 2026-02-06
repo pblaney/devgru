@@ -42,13 +42,13 @@ The scaffold takes a function where the input can be subset by chromosome and th
 expected output is either a data.table or GenomicRanges object
 }
 \examples{
-# Run as part of the `get_dryclean_segmentation()` workflow using
+# Run as part of the `get_fragcounter_segmentation()` workflow using
 # `get_cbs_per_chromosome()` as the par_function
 # final_cbs_segmentation <- chrompar(
 # par_function = get_cbs_per_chromosome,
 # par_chromosomes = chrom_iter_list,
 # par_cpus = threads,
-# seqnames_nona, foreground_cov_nona, start_nona, sample_id)
+# seqnames_nona, rdp_cov_nona, start_nona, sample_id)
 
 }
 \keyword{core}

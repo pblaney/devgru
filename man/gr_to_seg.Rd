@@ -18,13 +18,13 @@ data.table
 Converts a segmentation GenomicRanges object into a data.table object then extracts the
 appropriate columns and renames the columns to match the expected format.
 
-The input GenomicRanges is typically generated from \code{get_dryclean_segmentation()} workflow
+The input GenomicRanges is typically generated from \code{get_fragcounter_segmentation()} workflow
 or other \code{DNAcopy} CBS algorithm runs.
 }
 \examples{
-# Convert output from `get_dryclean_segmentation()` workflow
-# dryclean_seg <- get_dryclean_segmentation(
-# path_to_dryclean_profile = "read_depth_demo_hg38.rds",
+# Convert output from `get_fragcounter_segmentation()` workflow
+# frag_seg <- get_fragcounter_segmentation(
+# path_to_fragcounter_profile = "read_depth_demo_hg38.rds",
 # cpus = 4)
 
 # gr_to_seg(dryclean_seg)

@@ -880,16 +880,16 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #' Converts a segmentation GenomicRanges object into a data.table object then extracts the
 #' appropriate columns and renames the columns to match the expected format.
 #'
-#' The input GenomicRanges is typically generated from `get_dryclean_segmentation()` workflow
+#' The input GenomicRanges is typically generated from `get_fragcounter_segmentation()` workflow
 #' or other `DNAcopy` CBS algorithm runs.
 #'
 #' @param input_gr Segmentation GenomicRanges object to convert to data.table
 #' @param exp_colnames Expected column names for CBS segmentation input GenomicRanges
 #'
 #' @examples
-#' # Convert output from `get_dryclean_segmentation()` workflow
-#' # dryclean_seg <- get_dryclean_segmentation(
-#' # path_to_dryclean_profile = "read_depth_demo_hg38.rds",
+#' # Convert output from `get_fragcounter_segmentation()` workflow
+#' # frag_seg <- get_fragcounter_segmentation(
+#' # path_to_fragcounter_profile = "read_depth_demo_hg38.rds",
 #' # cpus = 4)
 #'
 #' # gr_to_seg(dryclean_seg)
@@ -899,11 +899,10 @@ gr_flank <- function(input_gr, start_flank = NULL, end_flank = NULL, start_flank
 #' @keywords core
 gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
   # Sanity check of columns in input GR
-  if(!gr_sanitycheck(query_gr = input_gr)) {
+  if(gr_sanitycheck(query_gr = input_gr, expected_cols = exp_colnames)) {
+    cli::cli_alert_success("Success")
+  } else {
     stop(cli::cli_alert_danger("Check input"))
-
-  } else if(!exp_colnames %in% colnames(S4Vectors::mcols(input_gr))) {
-    stop(cli::cli_alert_danger("Expectecd colnames not found in input GR"))
   }
 
   seg <- gUtils::gr2dt(input_gr) %>%
@@ -946,13 +945,13 @@ gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
 #'  executing the `par_function`
 #'
 #' @examples
-#' # Run as part of the `get_dryclean_segmentation()` workflow using
+#' # Run as part of the `get_fragcounter_segmentation()` workflow using
 #' # `get_cbs_per_chromosome()` as the par_function
 #' # final_cbs_segmentation <- chrompar(
 #' # par_function = get_cbs_per_chromosome,
 #' # par_chromosomes = chrom_iter_list,
 #' # par_cpus = threads,
-#' # seqnames_nona, foreground_cov_nona, start_nona, sample_id)
+#' # seqnames_nona, rdp_cov_nona, start_nona, sample_id)
 #'
 #' @returns GenomicRanges object with properly sorted genomic coordinates
 #' @export
@@ -992,398 +991,6 @@ chrompar <- function(par_function, par_chromosomes, ..., run_in_par = T, par_cpu
 
   return(par_out_gr)
 }
-
-#' @name get_cbs_per_chromosome
-#' @title Single chromosome run circular binary segmentation (CBS) algorithm on read depth profile
-#'
-#' @description
-#' Run CBS algorithm using DNAcopy on a per-chromosome basis on read depth profile. This
-#' allows for parallel computation of the segmentation, rapidly reducing run time.
-#' There should be no `NA`s in the columns or `0`s in the `signal` column.
-#'
-#' Note, this function was designed to be run as part of the `get_dryclean_segmentation()`
-#' workflow. Also, see `chrompar()` for executing in parallel.
-#'
-#' @param chrom_for_cbs The chromosome to run CBS algorithm on
-#' @param chromosome_names A vector of chromosome strings, equivalent to the seqnames
-#'  column. Must contain at least the `chrom_for_cbs`
-#' @param signal A vector of read depth signal to be used as input, equivalent to
-#'  the foreground or read ratio column. These values will be `log`ged before use in CBS
-#' @param position A vector of the genomic position of the signal measurement, equivalent
-#'  to the start column
-#' @param sample_id A string used to populate the ID column in the data.table
-#'
-#' @examples
-#' # For this example, there are no NAs or zeros in the `signal`
-#' # Check for these and may need to filter them out
-#' read_depth_demo_hg38
-#'
-#' # Example of what the input looks like for
-#' # chromosome_names
-#' head(as.character(GenomicRanges::seqnames(read_depth_demo_hg38)))
-#' # signal
-#' head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "foreground"]))
-#' # position
-#' head(GenomicRanges::start(read_depth_demo_hg38))
-#'
-#' @returns data.table of CBS segmentation values per chromosome
-#' @export
-#' @keywords workflow
-get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, position, sample_id) {
-  # Check for Suggests libraries
-  if (!require_namespaces(pkgs = "DNAcopy")) {
-    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
-  }
-
-  # Function CLI
-  cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_cbs})}}")
-
-  # Grab chromosome specific data for run the DNAcopy CBS workflow
-  idx_per_chrom <- which(chromosome_names == chrom_for_cbs)
-  log_signal_per_chrom <- log(signal)[idx_per_chrom]
-  chromosome_names_per_idx <- chromosome_names[idx_per_chrom]
-  position_per_chrom <- position[idx_per_chrom]
-
-  # Run DNAcopy CBS workflow
-  cna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
-                                chrom = chromosome_names_per_idx,
-                                maploc = position_per_chrom,
-                                data.type = 'logratio')
-
-  # For improved smoothing in output dryclean-based profile
-  # # smooth.DNA call
-  # increase smooth.region size 10 ==> 25
-  # decrease outlier.SD.scale threshold for identifying outliers 4 ==> 3.5
-  # decrease smooth.SD.scale threshold 2 ==> 1.75
-  # # segment call
-  # increase min.width to account for small bins of dryclean 2 ==> 5
-  # increase kmax 25 ==> 40
-  # increase nmin 200 ==> 250
-  # added undo.splits ==> sdundo
-  cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(x = cna_per_chrom,
-                                                                         smooth.region = 25,
-                                                                         outlier.SD.scale = 3.5,
-                                                                         smooth.SD.scale = 1.75),
-                                                 alpha = 1e-5,
-                                                 min.width = 5,
-                                                 kmax = 40,
-                                                 nmin = 250,
-                                                 undo.splits = "sdundo",
-                                                 undo.SD = 3,
-                                                 verbose = 0)
-
-  cna_segmentation_per_chrom_dt <- data.table::as.data.table(cna_segmentation_per_chrom$output)
-  cna_segmentation_per_chrom_dt$ID <- sample_id
-
-  # Return output per-chromosome CBS DT
-  return(cna_segmentation_per_chrom_dt)
-}
-
-#' @name get_dryclean_segmentation
-#' @title Generate a segmentation file from a dryclean fragCounter read depth profile
-#'
-#' @description
-#' Given dryclean processed fragCounter read depth profile, run DNAcopy's CBS algorithm
-#' in a parallel manner to produce a segmentation file that is compatible with GISTIC2.0.
-#'
-#' @param path_to_dryclean_profile Path to dryclean fragCounter read depth profile, .rds file
-#'  output obtained directly from `dryclean` run
-#' @param cpus Number of CPUs to use for parallel execution, default: 1
-#' @param random_seed Numeric value to use as random seed for consistent results
-#' @param verbose Output CLI during workflow, default: TRUE
-#' @param exp_colnames Expected column names for dryclean fragCounter read depth profile
-#'  input data.table
-#'
-#' @examples
-#' # Demo dryclean fragCounter read depth profile
-#' read_depth_demo_hg38
-#'
-#' # Execute the full workflow
-#' # dryclean_seg <- get_dryclean_segmentation(
-#' # path_to_dryclean_profile = "read_depth_demo_hg38.rds",
-#' # cpus = 4)
-#'
-#' @returns data.table object with required GISTIC2.0 columns
-#' @export
-#' @keywords workflow
-get_dryclean_segmentation <- function(path_to_dryclean_profile, cpus = 1, random_seed = 999, verbose = T,
-                                      exp_colnames = c("background.log","foreground.log","input.read.counts",
-                                                       "median.chr","foreground","background","log.reads",
-                                                       "germline.status")) {
-  # Check for Suggests libraries
-  if (!require_namespaces(pkgs = "DNAcopy")) {
-    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
-  }
-
-  # Main Workflow Function CLI
-  # Verbose tracing
-  if(verbose) {
-    function_cli_intro(package = "devgru",
-                       function_name = "get_dryclean_segmentation",
-                       path_to_dryclean_profile, cpus, random_seed, exp_colnames)
-  }
-  process_start <- cli_stopwatch_start(package = "devgru",
-                                       function_name = "get_dryclean_segmentation")
-
-  # Read in dryclean fragCounter coverage
-  cli::cli_alert_info("Reading {.file {path_to_dryclean_profile}} {crayon::white(clisymbols::symbol$ellipsis)}")
-  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_profile, pattern = "\\..*dryclean.*rds"))
-  dryclean_frag_cov <- readRDS(file = path_to_dryclean_profile)
-  # Check if input if dryclean GR obj
-  if(gr_sanitycheck(query_gr = dryclean_frag_cov, expected_cols = exp_colnames)) {
-    cli::cli_alert_success("Success")
-  } else {
-    stop(cli::cli_alert_danger("Check input"))
-  }
-
-  # Grab the drycleaned fragCounter foreground read coverage values
-  foreground_cov <- as.double(GenomicRanges::values(dryclean_frag_cov)[, "foreground"])
-
-  # Add very small constant value to move zero values to non-zero values before segmentation
-  zero_idx <- which(foreground_cov == 0)
-  if(length(zero_idx) > 0) {
-    small_const <- .Machine$double.eps
-    foreground_cov <- foreground_cov + small_const
-    cli::cli_alert_info("{crayon::cyan(length(zero_idx))} coverage data points have zero value, adding small constant value {crayon::cyan(small_const)} to prevent log error")
-  }
-
-  # Sub-Workflow CLI
-  pio::pioTit(paste0("Circular Binary Segmentation (CBS) with DNAcopy v", utils::packageVersion("DNAcopy")))
-  cat("\n")
-
-  # Grab index of all non-NA drycleaned foreground read covearge
-  idx <- which(!is.na(foreground_cov))
-  foreground_cov_nona <- foreground_cov[idx]
-  seqnames_nona <- as.character(GenomicRanges::seqnames(dryclean_frag_cov))[idx]
-  start_nona <- GenomicRanges::start(dryclean_frag_cov)[idx]
-  chrom_iter_list <- gtools::mixedsort(unique(seqnames_nona))
-
-  # Parallel execution of CBS per chromosome and merging to single DT object
-  final_cbs_segmentation <- chrompar(par_function = get_cbs_per_chromosome, par_chromosomes = chrom_iter_list, par_cpus = cpus,
-                                     seqnames_nona, foreground_cov_nona, start_nona, sample_id)
-
-  # Return the DT of CBS output for easy downstream use
-  cli::cli_alert_success("Segmentation finished")
-  cli_stopwatch_end(package = "devgru",
-                    function_name = "get_dryclean_segmentation",
-                    stopwatch_start = process_start)
-  return(final_cbs_segmentation)
-}
-
-# #' @name get_imputed_gaps_per_chromosome
-# #' @title Single chromosome run imputation of small, zero coverage gaps in CBS segmentation
-# #'
-# #' @description
-# #' Run imputation of small, zero coverage gaps in CBS segmentation using partition regression
-# #' of signal in neighborhood adjacent to the gap.
-# #' The gaps are typically small, less than 500 bp on average and inter spaced among large
-# #' segments of continuous, homogeneous signal. The gap signal is far less than expected
-# #' for real deletions, even homozygous events
-# #' Imputation greatly improves the foreground signal in downstream tools like JaBbA and GISTIC.
-# #'
-# #' Note, this function was designed to be run as part of the `get_segmentation_gap_imputation()`
-# #' workflow. Also, see `chrompar()` for executing in parallel.
-# #'
-# #' @param chrom_for_imputation The chromosome to run gap imputation algorithm on
-# #' @param gapless_segmentation_whitelist GenomicRanges object of segmentation after removing blacklist regions and gaps
-# #' @param segmentation_gaps GenomicRanges object of gaps from the original segmentation
-# #' @param threshold Threshold of segmentation signal to determine a gap, default: -4.95
-# #' @param structural_variant_breakpoints GenomicRanges object of individual breakpoints from sample SVs
-# #' @param sample_id Name of sample
-# #' @param make_plots Generate diagnostic plots of imputation results? default: FALSE
-# #' @param path_for_plots Path to directory to hold diagnostic plot small PNGs (~80 KB per plot)
-# #'
-# #' @returns data.table with gap imputed segmentation
-# #' @export
-# #' @keywords workflow
-# get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_segmentation_whitelist, segmentation_gaps, threshold = -4.95,
-#                                             structural_variant_breakpoints = NULL, sample_id, make_plots = F, path_for_plots) {
-#   # Check for Suggests libraries
-#   if (!require_namespaces(pkgs = "rpart")) {
-#     stop(cli::cli_alert_danger("Packages {.pkg rpart} required for this workflow function"))
-#   }
-#
-#   # Function CLI
-#   cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_imputation})}}")
-#
-#   # Grab chromosome specific data for run the partition regression imputation workflow
-#   gapless_whitelist_seg_per_chrom <- gapless_segmentation_whitelist %Q% (seqnames == chrom_for_imputation)
-#   gaps_per_chrom <- segmentation_gaps %Q% (seqnames == chrom_for_imputation)
-#   cli::cli_text("{crayon::red(length(gaps_per_chrom))} {clisymbols::symbol$arrow_right} Gaps to be imputed on {crayon::green({chrom_for_imputation})}")
-#
-#   if(!is.null(structural_variant_breakpoints)) {
-#     sv_bps_per_chrom <- structural_variant_breakpoints %Q% (seqnames == chrom_for_imputation)
-#   }
-#
-#   # Read in the chromosome arms regions
-#   chromosome_arms <- get_data(name_of_data = "chromosome_arms_hg38")
-#   #(function(...)get(utils::data(...,envir = new.env())))("chromosome_arms_hg38")
-#
-#   # Loop through the gaps, find the founder segments that will be used to impute the gaps
-#   imputed_gaps_per_chrom <- data.table::data.table()
-#   for(i in 1:length(gaps_per_chrom)) {
-#     # For convenience, set the gap of interest
-#     goi <- gaps_per_chrom[i]
-#
-#     # To ensure gaps will only be imputed using values from the same arm, check which arm the gap is located on
-#     gap_arm <- gUtils::gr.findoverlaps(query = goi,
-#                                        subject = chromosome_arms,
-#                                        scol = "arm")
-#     if(gap_arm$arm == "p") {
-#       arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")),
-#                           GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "p")))
-#     } else if(gap_arm$arm == "q") {
-#       arm_boundaries <- c(GenomicRanges::start(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")),
-#                           GenomicRanges::end(chromosome_arms %Q% (seqnames == chrom_for_imputation & arm == "q")))
-#     }
-#
-#     # Calculate the padding for each gap, total padding will be 1.5 the size of the gap
-#     padding <- round(x = GenomicRanges::width(goi) * 1.5,
-#                      digits = 0)
-#
-#     # Grab the neighborhood values around gap as the founder segments
-#     founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
-#                                                                 start_flank =  padding / 2,
-#                                                                 end_flank = padding / 2,
-#                                                                 start_flank_boundary = arm_boundaries[1],
-#                                                                 end_flank_boundary = arm_boundaries[2]),
-#                                                subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
-#                                                scol = "seg.mean")
-#
-#     # Check here if the founder segment exists as expected, the padding could be too small and
-#     # not provide neighborhood values. If so, increase the padding
-#     while(length(founder_segment) == 0) {
-#       # Increase padding
-#       cli::cli_alert_info("Previous padding {crayon::red({padding})} bp on {crayon::green({chrom_for_imputation})} not large enough {clisymbols::symbol$arrow_right} Increasing by 3x {crayon::white(clisymbols::symbol$ellipsis)}")
-#       padding <- round(x = padding * 3,
-#                        digits = 0)
-#       founder_segment <- gUtils::gr.findoverlaps(query = gr_flank(input_gr = goi,
-#                                                                   start_flank =  padding / 2,
-#                                                                   end_flank = padding / 2,
-#                                                                   start_flank_boundary = arm_boundaries[1],
-#                                                                   end_flank_boundary = arm_boundaries[2]),
-#                                                  subject = gapless_whitelist_seg_per_chrom %Q% (seg.mean > threshold),
-#                                                  scol = "seg.mean")
-#     }
-#
-#     # Tile the founder segment used for imputation and add the the corresponding seg.mean to each tile
-#     partition_reg_data <- gUtils::gr.findoverlaps(query = gUtils::gr.tile(gr = founder_segment, width = 100),
-#                                                   subject = founder_segment,
-#                                                   scol = "seg.mean")
-#     # Add label for diagnostic plotting
-#     partition_reg_data$tile_type <- "founder"
-#
-#     # Fit the data with a partition regression
-#     partition_reg_fit <- rpart::rpart(data = gUtils::gr2dt(partition_reg_data), formula = seg.mean ~ start)
-#
-#     # If SV BPs are provided, check for overlap here as they will be used to provide
-#     # a more accurate location of segmentation jump
-#     goi_sv_bp_overlap <- NULL
-#     if(!is.null(structural_variant_breakpoints)) {
-#       goi_sv_bp_overlap <- gUtils::gr.findoverlaps(query = goi,
-#                                                    subject = sv_bps_per_chrom)
-#     }
-#
-#     # SV BP workflow
-#     # must check if there is an overlap, otherwise use the standard approach
-#     if(!is.null(goi_sv_bp_overlap) & length(goi_sv_bp_overlap) > 0) {
-#       # Break the original gap into disjointed segments using the SV breakpoints
-#       new_goi <- gUtils::gr.breaks(bps = goi_sv_bp_overlap, query = goi)
-#
-#       # For this approach, the new gaps will not be tiled and will individually be fit predicted
-#       imputed_sv_gaps <- GenomicRanges::GRanges()
-#       for(j in 1:length(new_goi)) {
-#         # Grab each SV gap
-#         sv_gap <- new_goi[j]
-#
-#         sv_gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(sv_gap))
-#
-#         # Add the predicted seg.mean to the tiles
-#         sv_gap$seg.mean <- as.numeric(sv_gap_rpart_pred)
-#         sv_gap$tile_type <- paste0("imputed gap", j)
-#
-#         # Add each imputed SV gap to a set
-#         imputed_sv_gaps <- gUtils::grbind(imputed_sv_gaps, sv_gap)
-#       }
-#
-#       # Visualize the gap imputation with a diagnostic plot
-#       if(make_plots == T) {
-#         diagnostic_plot <- geom_gap_imputation(original_gap = goi,
-#                                                imputed_gap_gr = gUtils::grbind(partition_reg_data, imputed_sv_gaps),
-#                                                sv_bp = goi_sv_bp_overlap)
-#         ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
-#                         plot = diagnostic_plot,
-#                         path = path_for_plots,
-#                         width = 125,
-#                         height = 75,
-#                         units = "mm",
-#                         device = "png")
-#       }
-#
-#       # Final prep before adding the imputed gaps to the final imputed set
-#       # Need to update the num.mark column to reflect it being a split of the original
-#       imputed_sv_gaps_dt <- gUtils::gr2dt(imputed_sv_gaps) %>%
-#         dplyr::rename("oldnum.mark" = num.mark) %>%
-#         dplyr::mutate("num.mark" = goi$num.mark / length(imputed_sv_gaps)) %>%
-#         dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
-#
-#       # Add to final set
-#       imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
-#                                                imputed_sv_gaps_dt)
-#
-#       # No SV BP workflow
-#     } else {
-#       # tile the gap segment to impute at intervals across the gap
-#       tiled_gap <- gUtils::gr.tile(gr = gaps_per_chrom[i], width = 100)
-#
-#       # Use the fit partition regression to predict the values at each tile across the gap
-#       gap_rpart_pred <- stats::predict(partition_reg_fit, newdata = gUtils::gr2dt(tiled_gap))
-#
-#       # Add the predicted seg.mean to the tiles
-#       tiled_gap$seg.mean <- as.numeric(gap_rpart_pred)
-#       # For plotting
-#       tiled_gap$tile_type <- "imputed gap"
-#
-#       # Visualize the gap imputation with a diagnostic plot
-#       if(make_plots == T & sum(GenomicRanges::width(goi)) > 25000) {
-#         diagnostic_plot <- geom_gap_imputation(original_gap = goi,
-#                                                imputed_gap_gr = gUtils::grbind(partition_reg_data, tiled_gap))
-#         ggplot2::ggsave(filename = paste0("impute_", stringr::str_replace(string = gUtils::gr.string(goi), pattern = ":", replacement = "_"), ".png"),
-#                         plot = diagnostic_plot,
-#                         path = path_for_plots,
-#                         width = 125,
-#                         height = 75,
-#                         units = "mm",
-#                         device = "png")
-#       }
-#
-#       # Final prep before adding the imputed gaps to the final imputed set
-#       # Reduce the tiled gap to the minimum set of contiguous segments based on the change in seg.mean
-#       imputed_tiled_gap <- gUtils::gr.reduce(tiled_gap, by = "seg.mean")
-#
-#       # Convert imputed gaps to DT and make last adjustments below
-#       # also needs sample ID
-#       # num.mark, calculate by dividing the original num.mark but total new segments
-#       # subject.id
-#       imputed_tiled_gap_dt <- gUtils::gr2dt(imputed_tiled_gap) %>%
-#         dplyr::mutate("ID" = sample_id,
-#                       "num.mark" = goi$num.mark / length(imputed_tiled_gap)) %>%
-#         dplyr::rename("subject.id" = tile.id) %>%
-#         dplyr::select(seqnames,start,end,strand,width,query.id,subject.id,ID,num.mark,seg.mean)
-#
-#       # Add to final set
-#       imputed_gaps_per_chrom <- gUtils::rrbind(imputed_gaps_per_chrom,
-#                                                imputed_tiled_gap_dt)
-#     }
-#   }
-#
-#   # Return the final imputed DT
-#   return(imputed_gaps_per_chrom)
-# }
-
-
-
-
 
 #' @name get_imputed_gaps_per_chromosome
 #' @title Single chromosome run imputation of small, NA read gaps in fragCounter coverage
@@ -1526,146 +1133,6 @@ get_imputed_gaps_per_chromosome <- function(chrom_for_imputation, gapless_covera
   return(imputed_gaps_per_chrom)
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#' @name get_segmentation_gap_imputation
-#' @title Generate gap imputed segmentation from CBS output
-#'
-#' @description
-#' Given CBS segmentation with small, zero signal gaps, run neighbrohood-based partition
-#' regression gap imputation in a parallel manner to produce a gap imputed segmentation file
-#' that is provides cleaner foreground signal in JaBbA and GISTIC.
-#'
-#' @param path_to_dryclean_segmentation Path to dryclean CBS segmentation
-#' @param threshold_for_imputation Threshold for determining gaps for imputation, default: -4.95
-#' @param path_to_structural_variants Path to structural variants called for sample, optional
-#' @param cpus Number of CPUs to use for parallel execution, default: 1
-#' @param make_diagnostic_plots Generate diagnostic plots for each imputed gap, default: FALSE
-#' @param path_to_diagnostic_plots_dir Path to directory to place diagnostic plot PNGs
-#' @param exp_colnames Expected column names for segmentation input data.table
-#' @param verbose Output CLI during workflow, default: TRUE
-#'
-#' @examples
-#' # Execute the full workflow
-#' # full_imp_test <- get_segmentation_gap_imputation(
-#' # path_to_dryclean_segmentation = "sample.dryclean.fragcounter.cbs.seg",
-#' # threshold_for_imputation = -4.95,
-#' # path_to_structural_variants = "sample.hq.union.consensus.somatic.sv.bedpe",
-#' # cpus = 2,
-#' # make_diagnostic_plots = T,
-#' # path_to_diagnostic_plots_dir = "impute_qc_plots/")
-#'
-#' @returns GenomicRanges object with gap imputed segmentation
-#' @export
-#' @keywords workflow
-get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, threshold_for_imputation = -4.95,
-                                            path_to_structural_variants = NULL, cpus = 1, make_diagnostic_plots = FALSE,
-                                            path_to_diagnostic_plots_dir = NULL, exp_colnames = c("ID","chrom","loc.start","loc.end","num.mark","seg.mean"),
-                                            verbose = T) {
-  # Check for Suggests libraries
-  if (!require_namespaces(pkgs = c("rpart","gGnome"))) {
-    stop(cli::cli_alert_danger("Packages {.pkg rpart, gGnome} required for this workflow function"))
-  }
-
-  # Main Workflow Function CLI
-  # Verbose tracing
-  if(verbose) {
-    function_cli_intro(package = "devgru",
-                       function_name = "get_segmentation_gap_imputation",
-                       path_to_dryclean_segmentation, threshold_for_imputation, path_to_structural_variants, cpus, exp_colnames)
-  }
-  process_start <- cli_stopwatch_start(package = "devgru",
-                                       function_name = "get_segmentation_gap_imputation")
-
-  # Read in dryclean CBS segmentation
-  cli::cli_alert_info("Reading {.file {path_to_dryclean_segmentation}} {crayon::white(clisymbols::symbol$ellipsis)}")
-  sample_id <- basename(stringr::str_remove(string = path_to_dryclean_segmentation, pattern = "\\..*dryclean.*seg"))
-  dryclean_segmentation <- data.table::fread(file = path_to_dryclean_segmentation,
-                                             sep = "\t",
-                                             header = T)
-  # Check if input if dryclean CBS segmentation DT obj
-  if(dt_sanitycheck(query_dt = dryclean_segmentation, expected_cols = exp_colnames)) {
-    cli::cli_alert_success("Success")
-  } else {
-    stop(cli::cli_alert_danger("Check input"))
-  }
-
-  if(!is.null(path_to_structural_variants)) {
-    if(file.exists(path_to_structural_variants)) {
-      structural_variants <- gGnome::jJ(rafile = path_to_structural_variants,
-                                        chr.convert = F,
-                                        hg = "hg38",
-                                        keep.features = T,
-                                        seqlengths = gUtils::hg_seqlengths()[1:24])
-      # convert to BPs
-      sbv_bps <- gUtils::grl.unlist(structural_variants$grl)
-    } else {
-      stop(cli::cli_alert_danger("Could not locate {.file {path_to_structural_variants}}, check path"))
-    }
-
-  } else {
-    # No SVs provided
-    sbv_bps <- NULL
-  }
-
-  # Read in the exclusion regions
-  exclusion_regions <- get_data(name_of_data = "exclusion_regions_hg38")
-  #(function(...)get(utils::data(...,envir = new.env())))("exclusion_regions_hg38")
-
-  # Get the whitelist regions
-  dryclean_segmentation_whitelist <- gUtils::gr.setdiff(query = dt_to_gr(dryclean_segmentation),
-                                                        subject = exclusion_regions)
-
-  # Extract the gaps from the whitelist regions
-  gaps_to_impute <- dryclean_segmentation_whitelist %Q% (seg.mean <= threshold_for_imputation)
-
-  # Get the gapless whitelist regions
-  dryclean_segmentation_whitelist_gapless <- gUtils::gr.setdiff(query = dryclean_segmentation_whitelist,
-                                                                subject = gaps_to_impute)
-
-  # Get the list of chromosomes to iterate over
-  chrom_iter_list <- gtools::mixedsort(unique(as.character(GenomeInfoDb::seqnames(gaps_to_impute))))
-
-  # Sub-Workflow CLI
-  pio::pioTit(paste0("Partition Regression imputation with rpart v", utils::packageVersion("rpart")))
-  cat("\n")
-
-  # Parallel execution of partition regression per chromosome and merging to single GR object
-  final_imputed_gaps <- chrompar(par_function = get_imputed_gaps_per_chromosome, par_chromosomes = chrom_iter_list,
-                                 par_cpus = cpus, par_packages = c("gUtils", "devgru"),
-                                 dryclean_segmentation_whitelist_gapless, gaps_to_impute, threshold_for_imputation,
-                                 sbv_bps, sample_id, make_diagnostic_plots, path_to_diagnostic_plots_dir)
-
-  # Combine the imputed gaps with the whitelist gapless regions to make final set
-  final_imputed_segmentation <- GenomicRanges::sort(gUtils::grbind(dryclean_segmentation_whitelist_gapless,
-                                                                   final_imputed_gaps))
-
-  # Return the GR of imputed gaps output for easy downstream use
-  cli::cli_alert_success("Imputation finished")
-  cli_stopwatch_end(package = "devgru",
-                    function_name = "get_segmentation_gap_imputation",
-                    stopwatch_start = process_start)
-
-  return(final_imputed_segmentation)
-}
-
-
-
-
-
-
 #' @name get_cov_gap_imputation
 #' @title Generate gap imputed coverage from fragCounter output
 #'
@@ -1678,7 +1145,7 @@ get_segmentation_gap_imputation <- function(path_to_dryclean_segmentation, thres
 #' @param cpus Number of CPUs to use for parallel execution, default: 1
 #' @param make_diagnostic_plots Generate diagnostic plots for each imputed gap, default: FALSE
 #' @param path_to_diagnostic_plots_dir Path to directory to place diagnostic plot PNGs
-#' @param exp_colnames Expected column names for coverage input data.table
+#' @param exp_colnames Expected column names for coverage input GR
 #' @param verbose Output CLI during workflow, default: TRUE
 #'
 #' @returns GenomicRanges object with gap imputed coverage
@@ -1753,15 +1220,181 @@ get_cov_gap_imputation <- function(path_to_fragcounter_cov, cpus = 1, make_diagn
   return(final_imputed_segmentation)
 }
 
+#' @name get_cbs_per_chromosome
+#' @title Single chromosome run circular binary segmentation (CBS) algorithm on read depth profile
+#'
+#' @description
+#' Run CBS algorithm using DNAcopy on a per-chromosome basis on read depth profile. This
+#' allows for parallel computation of the segmentation, rapidly reducing run time.
+#' There should be no `NA`s in the columns or `0`s in the `signal` column.
+#'
+#' Note, this function was designed to be run as part of the `get_fragcounter_segmentation()`
+#' workflow. Also, see `chrompar()` for executing in parallel.
+#'
+#' @param chrom_for_cbs The chromosome to run CBS algorithm on
+#' @param chromosome_names A vector of chromosome strings, equivalent to the seqnames
+#'  column. Must contain at least the `chrom_for_cbs`
+#' @param signal A vector of read depth signal to be used as input. These values will
+#'  be `log`ged before use in CBS
+#' @param position A vector of the genomic position of the signal measurement, equivalent
+#'  to the start column
+#' @param sample_id A string used to populate the ID column in the data.table
+#'
+#' @examples
+#' # For this example, there are no NAs or zeros in the `signal`
+#' # Check for these and may need to filter them out
+#' read_depth_demo_hg38
+#'
+#' # Example of what the input looks like for
+#' # chromosome_names
+#' # head(as.character(GenomicRanges::seqnames(read_depth_demo_hg38)))
+#' # signal
+#' # head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "reads.corrected"]))
+#' # position
+#' # head(GenomicRanges::start(read_depth_demo_hg38))
+#'
+#' @returns data.table of CBS segmentation values per chromosome
+#' @export
+#' @keywords workflow
+get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, position, sample_id) {
+  # Check for Suggests libraries
+  if (!require_namespaces(pkgs = "DNAcopy")) {
+    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
+  }
 
+  # Function CLI
+  cli::cli_text("{clisymbols::symbol$pointer} {.emph {crayon::green({chrom_for_cbs})}}")
 
+  # Grab chromosome specific data for run the DNAcopy CBS workflow
+  idx_per_chrom <- which(chromosome_names == chrom_for_cbs)
+  log_signal_per_chrom <- log(signal)[idx_per_chrom]
+  chromosome_names_per_idx <- chromosome_names[idx_per_chrom]
+  position_per_chrom <- position[idx_per_chrom]
 
+  # Run DNAcopy CBS workflow
+  cna_per_chrom <- DNAcopy::CNA(genomdat = log_signal_per_chrom,
+                                chrom = chromosome_names_per_idx,
+                                maploc = position_per_chrom,
+                                data.type = 'logratio')
 
+  # For improved smoothing in output fragCounter-based profile
+  # - smooth.DNA call
+  # default smooth.region size 10
+  # default outlier.SD.scale threshold for identifying outliers 4
+  # default smooth.SD.scale threshold 2
+  #
+  # - segment call
+  # default min.width to account for small bins of fragCounter 2
+  # default kmax 25
+  # default nmin 200
+  # added undo.splits ==> sdundo
+  # and undo.SD ==> 3
+  cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(x = cna_per_chrom,
+                                                                         smooth.region = 10,
+                                                                         outlier.SD.scale = 4,
+                                                                         smooth.SD.scale = 2),
+                                                 alpha = 1e-5,
+                                                 min.width = 2,
+                                                 kmax = 25,
+                                                 nmin = 200,
+                                                 undo.splits = "sdundo",
+                                                 undo.SD = 3,
+                                                 verbose = 0)
 
+  cna_segmentation_per_chrom_dt <- data.table::as.data.table(cna_segmentation_per_chrom$output)
+  cna_segmentation_per_chrom_dt$ID <- sample_id
 
+  # Return output per-chromosome CBS DT
+  return(cna_segmentation_per_chrom_dt)
+}
 
+#' @name get_fragcounter_segmentation
+#' @title Generate a segmentation file from a fragCounter read depth profile
+#'
+#' @description
+#' Given fragCounter read depth profile, run DNAcopy's CBS algorithm in a parallel
+#' manner to produce a segmentation file that is compatible with GISTIC2.0.
+#'
+#' @param path_to_fragcounter_profile Path to fragCounter read depth profile, .rds file
+#' @param cpus Number of CPUs to use for parallel execution, default: 1
+#' @param random_seed Numeric value to use as random seed for consistent results
+#' @param verbose Output CLI during workflow, default: TRUE
+#' @param exp_colnames Expected column names for fragCounter read depth profile input
+#'
+#' @examples
+#' # Demo fragCounter read depth profile
+#' read_depth_demo_hg38
+#'
+#' # Execute the full workflow
+#' # fragcounter_seg <- get_fragcounter_segmentation(
+#' # path_to_fragcounter_profile = "read_depth_demo_hg38.rds",
+#' # cpus = 4)
+#'
+#' @returns data.table object with required GISTIC2.0 columns
+#' @export
+#' @keywords workflow
+get_fragcounter_segmentation <- function(path_to_fragcounter_profile, cpus = 1,
+                                         random_seed = 999, verbose = T,
+                                         exp_colnames = c("reads","gc","map","reads.corrected")) {
+  # Check for Suggests libraries
+  if (!devgru:::require_namespaces(pkgs = "DNAcopy")) {
+    stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
+  }
 
+  # Main Workflow Function CLI
+  # Verbose tracing
+  if(verbose) {
+    function_cli_intro(package = "devgru",
+                       function_name = "get_fragcounter_segmentation",
+                       path_to_fragcounter_profile, cpus, random_seed, exp_colnames)
+  }
+  process_start <- cli_stopwatch_start(package = "devgru",
+                                       function_name = "get_fragcounter_segmentation")
 
+  # Read in fragCounter coverage
+  cli::cli_alert_info("Reading {.file {path_to_fragcounter_profile}} {crayon::white(clisymbols::symbol$ellipsis)}")
+  sample_id <- basename(stringr::str_remove(string = path_to_fragcounter_profile, pattern = "\\..*fragcounter.*rds"))
+  frag_cov <- readRDS(file = path_to_fragcounter_profile)
+  # Check if input if fragCounter GR obj
+  if(gr_sanitycheck(query_gr = frag_cov, expected_cols = exp_colnames)) {
+    cli::cli_alert_success("Success")
+  } else {
+    stop(cli::cli_alert_danger("Check input"))
+  }
+
+  # Grab the fragCounter corrected read depth coverage values
+  rdp_cov <- as.double(GenomicRanges::values(frag_cov)[, "reads.corrected"])
+
+  # Add very small constant value to move zero values to non-zero values before segmentation
+  zero_idx <- which(rdp_cov == 0)
+  if(length(zero_idx) > 0) {
+    small_const <- .Machine$double.eps
+    rdp_cov <- rdp_cov + small_const
+    cli::cli_alert_info("{crayon::cyan(length(zero_idx))} coverage data points have zero value, adding small constant value {crayon::cyan(small_const)} to prevent log error")
+  }
+
+  # Sub-Workflow CLI
+  pio::pioTit(paste0("Circular Binary Segmentation (CBS) with DNAcopy v", utils::packageVersion("DNAcopy")))
+  cat("\n")
+
+  # Grab index of all non-NA fragCounter corrected read depth covearge
+  idx <- which(!is.na(rdp_cov))
+  rdp_cov_nona <- rdp_cov[idx]
+  seqnames_nona <- as.character(GenomicRanges::seqnames(frag_cov))[idx]
+  start_nona <- GenomicRanges::start(frag_cov)[idx]
+  chrom_iter_list <- gtools::mixedsort(unique(seqnames_nona))
+
+  # Parallel execution of CBS per chromosome and merging to single DT object
+  final_cbs_segmentation <- chrompar(par_function = get_cbs_per_chromosome, par_chromosomes = chrom_iter_list, par_cpus = cpus,
+                                     seqnames_nona, rdp_cov_nona, start_nona, sample_id)
+
+  # Return the DT of CBS output for easy downstream use
+  cli::cli_alert_success("Segmentation finished")
+  cli_stopwatch_end(package = "devgru",
+                    function_name = "get_fragcounter_segmentation",
+                    stopwatch_start = process_start)
+  return(final_cbs_segmentation)
+}
 
 #' @name get_deseq2_diff_expr
 #' @title Run DESeq2 differential expression analysis on RNA-seq count data

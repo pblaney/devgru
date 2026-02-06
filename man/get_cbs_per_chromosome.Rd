@@ -18,8 +18,8 @@ get_cbs_per_chromosome(
 \item{chromosome_names}{A vector of chromosome strings, equivalent to the seqnames
 column. Must contain at least the \code{chrom_for_cbs}}
 
-\item{signal}{A vector of read depth signal to be used as input, equivalent to
-the foreground or read ratio column. These values will be \code{log}ged before use in CBS}
+\item{signal}{A vector of read depth signal to be used as input. These values will
+be \code{log}ged before use in CBS}
 
 \item{position}{A vector of the genomic position of the signal measurement, equivalent
 to the start column}
@@ -34,7 +34,7 @@ Run CBS algorithm using DNAcopy on a per-chromosome basis on read depth profile.
 allows for parallel computation of the segmentation, rapidly reducing run time.
 There should be no \code{NA}s in the columns or \code{0}s in the \code{signal} column.
 
-Note, this function was designed to be run as part of the \code{get_dryclean_segmentation()}
+Note, this function was designed to be run as part of the \code{get_fragcounter_segmentation()}
 workflow. Also, see \code{chrompar()} for executing in parallel.
 }
 \examples{
@@ -44,11 +44,11 @@ read_depth_demo_hg38
 
 # Example of what the input looks like for
 # chromosome_names
-head(as.character(GenomicRanges::seqnames(read_depth_demo_hg38)))
+# head(as.character(GenomicRanges::seqnames(read_depth_demo_hg38)))
 # signal
-head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "foreground"]))
+# head(as.double(GenomicRanges::values(read_depth_demo_hg38)[, "reads.corrected"]))
 # position
-head(GenomicRanges::start(read_depth_demo_hg38))
+# head(GenomicRanges::start(read_depth_demo_hg38))
 
 }
 \keyword{workflow}

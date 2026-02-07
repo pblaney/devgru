@@ -1290,13 +1290,13 @@ get_cbs_per_chromosome <- function(chrom_for_cbs, chromosome_names, signal, posi
   # added undo.splits ==> sdundo
   # and undo.SD ==> 3
   cna_segmentation_per_chrom <- DNAcopy::segment(x = DNAcopy::smooth.CNA(x = cna_per_chrom,
-                                                                         smooth.region = 10,
-                                                                         outlier.SD.scale = 4,
+                                                                         smooth.region = 15,
+                                                                         outlier.SD.scale = 3.5,
                                                                          smooth.SD.scale = 2),
-                                                 alpha = 1e-5,
-                                                 min.width = 2,
-                                                 kmax = 25,
-                                                 nmin = 200,
+                                                 alpha = 1e-6,
+                                                 min.width = 4,
+                                                 kmax = 30,
+                                                 nmin = 300,
                                                  undo.splits = "sdundo",
                                                  undo.SD = 3,
                                                  verbose = 0)
@@ -1940,7 +1940,10 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
 
   # Save the QC stats table
   cli::cli_alert_info("Writing qc_stats.txt to {.file {jabba_workdir_path}} {crayon::white(clisymbols::symbol$ellipsis)}")
-  data.table::fwrite(x = qc_stats_dt,
+  data.table::fwrite(x = qc_stats_dt %>%
+                           tibble::column_to_rownames(var = "stat") %>%
+                           t() %>%
+                           as.data.table(),
                      file = paste0(jabba_workdir_path, tumor_normal_id, "-qc_stats.txt"),
                      sep = "\t",
                      col.names = T)
@@ -1965,16 +1968,6 @@ get_jabba_qc_diagnostic <- function(tumor_normal_id, jabba_workdir_path, verbose
                     function_name = "get_jabba_qc_diagnostic",
                     stopwatch_start = process_start)
 }
-
-
-
-
-
-
-
-
-
-
 
 #' @name get_qc_diagnostics_alignment
 #' @title Generate diagnostic plots for alignment QC checks using Alfred summary files

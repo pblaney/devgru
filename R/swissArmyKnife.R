@@ -1635,7 +1635,7 @@ get_deseq2_diff_expr <- function(counts_file_path, condition_file_path, gene_uni
   pct_surv_vs_filter <- ggpie::ggpie(data = per_gene_expr_qc,
                                      group_key = "filtered_vs_survived",
                                      count_type = "full",
-                                     label_info = "all",
+                                     label_info = c("count", "ratio"),
                                      label_size = 5,
                                      label_pos = "out",
                                      label_type = "horizon",

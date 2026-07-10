@@ -382,7 +382,23 @@ hmcl_conditions_demo_dt_hg38 <- data.table::fread(input = fs::path_package("extd
 usethis::use_data(hmcl_counts_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 usethis::use_data(hmcl_conditions_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 
+#
+#
+# }}}}------->>> Multiple Myeloma Translocation Ranges
+#
+#
 
+# Don't rerun the code snippet but simply load the data here
+# Ig regions
+myeloma_translocation_ig_loci_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "myeloma_translocation_ig_loci.hg38.bed", package = "devgru"),
+                                                    has_header = T)
+# Partner regions
+myeloma_translocation_partner_loci_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "myeloma_translocation_partner_loci.hg38.bed", package = "devgru"),
+                                                    has_header = T)
+
+# Export for usage
+usethis::use_data(myeloma_translocation_ig_loci_hg38, internal = FALSE, overwrite = TRUE)
+usethis::use_data(myeloma_translocation_partner_loci_hg38, internal = FALSE, overwrite = TRUE)
 
 
 #

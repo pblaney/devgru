@@ -35,3 +35,4 @@ Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Va
 Also supports conversion of germline SNP/InDel VCF from DeepVariant.
 The VCF file can be either zipped or unzipped.
 }
+\keyword{reader}

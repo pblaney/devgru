@@ -11,30 +11,42 @@ aggregate_these(
   has_header = TRUE,
   cpus = 1,
   add_uniq_id = FALSE,
-  genomic_sort_output = FALSE
+  id_column_name = "sample_id",
+  genomic_sort_output = FALSE,
+  verbose = TRUE,
+  full_names = FALSE
 )
 }
 \arguments{
-\item{path_to_files}{path to location of files to be aggregated}
+\item{path_to_files}{Path to location of files to be aggregated}
 
-\item{pattern_to_grab}{\code{ls}-style pattern used to identify files}
+\item{pattern_to_grab}{\code{ls}-style pattern (regex) used to identify files}
 
-\item{delim}{delimiter used in files to be aggregated, expected to be same in all files, default: \verb{\\t}}
+\item{delim}{Delimiter used in files to be aggregated, expected to be same in all files. Default: \verb{\\t}}
 
-\item{has_header}{indicate if files have a header line, expected to be same in all files, default: TRUE}
+\item{has_header}{Logical, indicate if files have a header line, expected to be same in all files. Default: TRUE}
 
-\item{cpus}{number of cpus for reading in data, used by \code{data.table::fread()}, default: 1}
+\item{cpus}{Number of CPUs for reading in data, used by \code{data.table::fread()}. Default: 1}
 
-\item{add_uniq_id}{indicate if the output data.table should include a unique identifier column, derived
-from input file basename, default: FALSE}
+\item{add_uniq_id}{Logical, indicate if the output data.table should include a unique identifier column,
+derived from input file basename. Default: FALSE}
 
-\item{genomic_sort_output}{indicate if the output data.table should be sorted by genomic coordinate, default: FALSE}
+\item{id_column_name}{Character, name for the unique identifier column if add_uniq_id = TRUE. Default: "sample_id"}
+
+\item{genomic_sort_output}{Logical, indicate if the output data.table should be sorted by genomic coordinate.
+Default: FALSE}
+
+\item{verbose}{Logical, whether to print progress messages. Default: TRUE}
+
+\item{full_names}{Logical, whether to use full file paths (TRUE) or just basenames (FALSE) for pattern matching.
+Default: FALSE}
 }
 \value{
 data.table object with all data under preserved column construct
 }
 \description{
-Collect all files that match a specific \code{ls}-style pattern at a specific path, read them into a data.table, then aggregate
-all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation table, CNV BED, or SV BEDPE.
+Collect all files that match a specific \code{ls}-style pattern at a specific path, read them into a data.table,
+then aggregate all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation
+table, CNV BED, or SV BEDPE.
 }
 \keyword{core}

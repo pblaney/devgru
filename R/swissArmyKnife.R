@@ -94,7 +94,9 @@ tile.id=Final_epgap=Non_telomeric_Loose_Ends=RMSE_of_Coverage_and_CN=Requested_e
 Tier_1_Input_Junctions=Tier_1_Output_Junctions=Tier_2_Input_Junctions=Tier_2_Output_Junctions=NULL
 Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumber=NULL
 p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
-median_insrt=median_reads=segment=reads.corrected=NULL
+median_insrt=median_reads=segment=reads.corrected=FILTER=Chromosome=Start_Position=NULL
+chr1_sort=chr2_sort=ig_region=trx_id=start1=end1=strand1=start2=end2=strand2=seqnames1=NULL
+seqnames2=NULL
 
 #
 #
@@ -115,14 +117,13 @@ median_insrt=median_reads=segment=reads.corrected=NULL
   Sys.setenv(DEFAULT_BSGENOME = 'BSgenome.Hsapiens.UCSC.hg38::Hsapiens')
   Sys.setenv(DEFAULT_GENOME = 'BSgenome.Hsapiens.UCSC.hg38::Hsapiens')
   options(scipen = 999)
-
+  
   invisible()
 }
 
 #' @keywords internal
 .onAttach <- function(libname, pkgname){
   cli_pio_colorscheme()
-  cli::cli_alert_info("Setting default {.emph {.pkg BSgenome}} to: {.field BSgenome.Hsapiens.UCSC.hg38}")
 }
 
 
@@ -319,7 +320,27 @@ NULL
 #' @format \code{data.table}
 NULL
 
+#' Ig loci of recurrent translocations in multiple myeloma as GenomicRanges
+#'
+#' This genomic ranges contains the known range of recurrent translocations at
+#' the Ig loci (IGH/IGK/IGL) as well as a set with 500 Kb flank added.
+#'
+#' @name myeloma_translocation_ig_loci_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GenomicRanges}
+NULL
 
+#' Partner loci of recurrent translocations in multiple myeloma as GenomicRanges
+#'
+#' This genomic ranges contains the known range of recurrent translocations distal
+#' partner loci of the Ig translocations as well as a set with various flanks added.
+#'
+#' @name myeloma_translocation_partner_loci_hg38
+#' @docType data
+#' @keywords data
+#' @format \code{GenomicRanges}
+NULL
 
 #
 #
@@ -520,6 +541,7 @@ kit_loadout <- function(update_kit = F) {
   }
   librarian::shelf(loadout, update_all = F, quiet = T)
   cat("\n")
+  cli::cli_alert_info("Setting default {.emph {.pkg BSgenome}} to: {.field BSgenome.Hsapiens.UCSC.hg38}")
   cli_stopwatch_end(function_name = "kit_loadout",
                     stopwatch_start = process_start)
 }
@@ -625,8 +647,11 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
 #' @keywords core
 dt_to_gr <- function(input_dt) {
   # Wrap the dt2gr function with the gr_refactor_seqs function
-  gr <- gr_refactor_seqs(input_gr = gUtils::dt2gr(input_dt, seqlengths = gUtils::hg_seqlengths()[1:24]),
-                         new_levels = gUtils::hg_seqlengths()[1:24])
+  gr <- gr_refactor_seqs(
+    input_gr = gUtils::dt2gr(input_dt,
+                             seqlengths = gUtils::hg_seqlengths()[1:24]),
+    new_levels = gUtils::hg_seqlengths()[1:24]
+  )
   return(gr)
 }
 
@@ -909,6 +934,174 @@ gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
     dplyr::select(ID,seqnames,start,end,num.mark,seg.mean) %>%
     dplyr::rename("chrom" = seqnames, "loc.start" = start, "loc.end" = end)
   return(seg)
+}
+
+#' @name get_igh_trx_subtype
+#' @title Detect Canonical IGH Translocations in Multiple Myeloma
+#'
+#' @description
+#' Identifies one of the five canonical IGH translocations in multiple myeloma:
+#' t(11;14), t(4;14), t(14;16), t(14;20), and t(6;14). Analyzes structural variant
+#' BEDPE data to detect translocations involving the IGH locus on chromosome 14 and
+#' canonical partner chromosomes.
+#'
+#' Breakpoint capture regions are GRCh38 genomic coordinates based on the panel regions
+#' defined in https://github.com/parvathisudha/Targeted-Panel-Analysis/blob/v1/BED_files/hg38/v22/MyelomaPanel2Translocationsv2_hg38.bed
+#' from https://pmc.ncbi.nlm.nih.gov/articles/PMC9250632/
+#'
+#' @param bedpe_file_path Character, path to BEDPE file containing structural variants
+#' @param region_flank Character, flank size to use for partner regions. Default: "500Kb"
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
+#'
+#' @returns Character vector of detected translocation subtype(s) or "Not Detected"
+#' @export
+get_igh_trx_subtype <- function(bedpe_file_path,
+                                region_flank = "500Kb",
+                                verbose = TRUE) {
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("plyranges","plyinteractions"))) {
+    stop(cli::cli_alert_danger("Package {.pkg plyranges, plyinteractions} required for this workflow function"))
+  }
+  
+  # Input validation
+  if (!file.exists(bedpe_file_path)) {
+    stop(sprintf("BEDPE file not found: %s", bedpe_file_path))
+  }
+  
+  # Define canonical MM translocations
+  canonical_trx <- c("t(11;14)", "t(4;14)", "t(14;20)", "t(14;16)", "t(6;14)")
+  
+  if (verbose) {
+    cli::cli_alert_info("Detecting canonical IGH translocations in multiple myeloma")
+  }
+  
+  # Load reference regions
+  if (verbose) {
+    cli::cli_alert_info("Loading reference genomic regions ...")
+  }
+  
+  # IGH region (chr14q32)
+  # Read in the Ig translocation region BED
+  myeloma_translocation_ig_loci <- get_data(name_of_data = "myeloma_translocation_ig_loci_hg38")
+  igh_region_bed <- myeloma_translocation_ig_loci %Q% (ig_region == "IGH" & region_flank == region_flank)
+  
+  # Canonical partner regions
+  myeloma_translocation_partner_loci <- get_data(name_of_data = "myeloma_translocation_partner_loci_hg38")
+  partner_regions_bed <- myeloma_translocation_partner_loci %Q% (trx_id %in% canonical_trx & region_flank == region_flank)
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Loaded IGH region and %d partner regions", 
+                                   length(partner_regions_bed)))
+  }
+  
+  # Read in the query BEDPE
+  if (verbose) {
+    cli::cli_alert_info("Reading BEDPE file ...")
+  }
+  
+  query_bedpe_dt <- tryCatch({
+    data.table::fread(file = bedpe_file_path)
+  }, error = function(e) {
+    stop(sprintf("Failed to read BEDPE file: %s", e$message))
+  })
+  
+  # Detect column names (handle variations)
+  chr1_col <- grep("^([Cc]hr1)|([Cc]hrom1)", names(query_bedpe_dt), value = TRUE)[1]
+  chr2_col <- grep("^([Cc]hr2)|([Cc]hrom2)", names(query_bedpe_dt), value = TRUE)[1]
+  
+  if (is.na(chr1_col) || is.na(chr2_col)) {
+    stop("Could not detect chromosome columns in BEDPE. Expected chr1/chr2 or chrom1/chrom2")
+  }
+  
+  # Convert to GInteractions
+  query_bedpe <- tryCatch({
+    plyinteractions::as_ginteractions(
+      query_bedpe_dt,
+      seqnames1 = !!sym(chr1_col),
+      start1 = start1,
+      end1 = end1,
+      strand1 = strand1,
+      seqnames2 = !!sym(chr2_col),
+      start2 = start2,
+      end2 = end2,
+      strand2 = strand2
+    )
+  }, error = function(e) {
+    stop(sprintf("Failed to convert BEDPE to GInteractions: %s", e$message))
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Loaded %d structural variants", length(query_bedpe)))
+  }
+  
+  # Filter to translocations involving chr14
+  query_trx <- query_bedpe %>%
+    dplyr::filter(seqnames1 != seqnames2) %>%
+    dplyr::filter(seqnames1 == "chr14" | seqnames2 == "chr14")
+  
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Found %d translocations involving chr14", length(query_trx)))
+  }
+  
+  # CHECK 1: No translocations involving chr14
+  if (length(query_trx) == 0) {
+    if (verbose) {
+      cli::cli_alert_warning("No translocations involving chr14 detected")
+    }
+    return("Not Detected")
+  }
+  
+  # Find overlap with IGH region
+  query_igh_trx <- plyranges::find_overlaps(x = query_trx, y = igh_region_bed)
+  
+  if (verbose) {
+    cli::cli_alert(sprintf("Found %d translocations overlapping IGH region", 
+                           length(query_igh_trx)))
+  }
+  
+  # CHECK 2: Translocation on chr14 is not in IGH region
+  if (length(query_igh_trx) == 0) {
+    if (verbose) {
+      cli::cli_alert_warning("No translocations found in IGH region")
+    }
+    return("Not Detected")
+  }
+  
+  # Find overlap with canonical partner regions
+  query_subtype_trx <- plyranges::find_overlaps(
+    x = query_igh_trx, 
+    y = partner_regions_bed
+  )
+  
+  if (verbose) {
+    cli::cli_alert(sprintf("Found %d translocations with canonical partners", 
+                           length(query_subtype_trx)))
+  }
+  
+  # CHECK 3: Translocation at IGH but not canonical partner regions
+  if (length(query_subtype_trx) == 0) {
+    if (verbose) {
+      cli::cli_alert_warning("IGH translocation detected but not to canonical partner region")
+      cli::cli_alert_info("Consider: non-canonical IGH translocation or variant breakpoint")
+    }
+    return("Not Detected")
+  }
+  
+  # Extract translocation subtype(s)
+  detected_subtypes <- unique(query_subtype_trx@elementMetadata$trx_id)
+  
+  # Report results
+  if (verbose) {
+    if (length(detected_subtypes) == 1) {
+      cli::cli_alert_success(sprintf("Detected IGH translocation: %s", detected_subtypes))
+    } else {
+      cli::cli_alert_warning(sprintf("Detected multiple IGH translocations: %s", 
+                                     paste(detected_subtypes, collapse = ", ")))
+      cli::cli_alert_info("Multiple translocations may indicate complex rearrangements")
+    }
+  }
+  
+  return(detected_subtypes)
 }
 
 
@@ -1337,7 +1530,7 @@ get_fragcounter_segmentation <- function(path_to_fragcounter_profile, cpus = 1,
                                          random_seed = 999, verbose = T,
                                          exp_colnames = c("reads","gc","map","reads.corrected")) {
   # Check for Suggests libraries
-  if (!devgru:::require_namespaces(pkgs = "DNAcopy")) {
+  if (!require_namespaces(pkgs = "DNAcopy")) {
     stop(cli::cli_alert_danger("Package {.pkg DNAcopy} required for this workflow function"))
   }
 
@@ -2648,6 +2841,12 @@ get_vaf <- function(vcf_obj, caller, mut_type) {
 }
 
 
+
+
+
+
+
+
 #' @name get_maf_lite
 #' @title Convert SNV & InDel mutation table to MAF-lite format
 #'
@@ -2861,6 +3060,106 @@ get_maf_lite <- function(path_to_snv_dir, path_to_indel_dir, snv_consensus_filte
   }
 }
 
+#' @name get_maf_nonsynonymous
+#' @title Extract Non-Synonymous Mutations from MAF
+#'
+#' @description
+#' Filters a MAF GenomicRanges object to retain only non-synonymous mutations,
+#' including both SNVs and InDels and splice site variantss.
+#' 
+#' Variant Class: SNV, insertion, deletion
+#' 
+#' Non-Synonymous Classifications: Missense_Mutation, Nonsense_Mutation, 
+#'                                 Frame_Shift_Del, Frame_Shift_Ins,
+#'                                 In_Frame_Del, In_Frame_Ins,
+#'                                 Nonstop_Mutation, Translation_Start_Site,
+#'                                 Splice_Site, Splice_Region
+#'
+#' Note, this function was designed to be run downstream of `read_maf_file()`
+#'
+#' @param maf_gr GenomicRanges object containing MAF data with metadata columns
+#' @param variant_class Character vector of variant class to include. 
+#'   Default: c("SNV", "insertion", "deletion")
+#' @param include_splice Logical, whether to include splice site variants (default: TRUE)
+#' 
+#' @return A GenomicRanges object containing only non-synonymous mutations
+#' @export
+#' @keywords workflow
+get_maf_nonsynonymous <- function(maf_gr,
+                                  variant_class = c("SNV", "insertion", "deletion"),
+                                  include_splice = TRUE) {
+  
+  # Validate input
+  if (!inherits(maf_gr, "GRanges")) {
+    stop("Input must be a GenomicRanges object")
+  }
+  
+  # Check for required columns
+  if (!"VARIANT_CLASS" %in% names(S4Vectors::mcols(maf_gr))) {
+    stop(cli::cli_alert_danger("MAF object must contain 'VARIANT_CLASS' column"))
+  }
+  
+  if (!"Variant_Classification" %in% names(S4Vectors::mcols(maf_gr))) {
+    stop(cli::cli_alert_danger("MAF object must contain 'Variant_Classification' column"))
+  }
+  
+  cli::cli_alert_info(sprintf("Processing %d variants from MAF...", length(maf_gr)))
+  
+  # Define non-synonymous variant classifications
+  nonsynonymous_classes <- c(
+    "Missense_Mutation",
+    "Nonsense_Mutation",
+    "Frame_Shift_Del",
+    "Frame_Shift_Ins",
+    "In_Frame_Del",
+    "In_Frame_Ins",
+    "Nonstop_Mutation",
+    "Translation_Start_Site"
+  )
+  
+  # Optionally include splice site variants
+  if (include_splice) {
+    nonsynonymous_classes <- c(
+      nonsynonymous_classes,
+      "Splice_Site",
+      "Splice_Region"
+    )
+  }
+  
+  # Filter by variant class
+  class_filter <- S4Vectors::mcols(maf_gr)$VARIANT_CLASS %in% variant_class
+  
+  # Filter by variant classification
+  classification_filter <- S4Vectors::mcols(maf_gr)$Variant_Classification %in% nonsynonymous_classes
+  
+  # Combine filters
+  combined_filter <- classification_filter & class_filter
+  
+  # Apply filter
+  nonsynonymous_gr <- maf_gr[combined_filter]
+  
+  # Summary statistics
+  cli::cli_alert_success(sprintf("Extracted %d non-synonymous mutations (%.1f%% of total)", 
+                                 length(nonsynonymous_gr),
+                                 100 * length(nonsynonymous_gr) / length(maf_gr)))
+  
+  # Breakdown by variant class, or type if class not found
+  class_summary <- table(S4Vectors::mcols(nonsynonymous_gr)$VARIANT_CLASS)
+  cli::cli_alert_info("Variant class breakdown:")
+  for (i in seq_along(class_summary)) {
+    cli::cli_alert(sprintf("  %s: %d", names(class_summary)[i], class_summary[i]))
+  }
+  
+  # Breakdown by variant classification
+  classification_summary <- table(S4Vectors::mcols(nonsynonymous_gr)$Variant_Classification)
+  cli::cli_alert_info("Variant classification breakdown:")
+  for (i in seq_along(classification_summary)) {
+    cli::cli_alert(sprintf("  %s: %d", names(classification_summary)[i], classification_summary[i]))
+  }
+  
+  return(nonsynonymous_gr)
+}
+
 
 #' @name get_corrected_cnv_profile
 #' @title Read in CNV profile data.table of various flavors and extract a corrected profile
@@ -2999,6 +3298,7 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 #'
 #' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
+#' @keywords reader
 read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
 
   gtf_gr <- rtracklayer::import(gtf_file_path)
@@ -3020,6 +3320,7 @@ read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) 
 #'
 #' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
+#' @keywords reader
 get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
 
   gtf_gr <- read_gtf_file(gtf_file_path = gtf_file_path, seq_lengths = seq_lengths)
@@ -3033,31 +3334,143 @@ get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlength
 #' @title Read MAF file and convert to GenomicRanges object
 #'
 #' @description
-#' Read in a MAF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
-#' The MAF file can be either zipped or unzipped.
+#' Read in a MAF file which contains a number of columns and convert it to a 
+#' GenomicRanges object with refactored seq details. The MAF file can be either 
+#' zipped or unzipped. This function performs validation and filtering to ensure
+#' proper MAF format compliance.
 #' For more specific MAFtools operations, see `maftools::read.maf()`
 #'
-#' @param maf_file_path Path to MAF file
-#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 2
-#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#' @param maf_file_path Path to MAF file (supports .maf, .maf.gz, .maf.txt, .txt)
+#' @param cpus Number of CPUs for reading data, used by `data.table::fread()`. Default: 2
+#' @param seq_lengths Named vector object used as template for new seq details. 
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths
+#' @param remove_filtered Logical, whether to remove variants with FILTER != "PASS". Default: FALSE
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
 #'
-#' @returns GenomicRanges object with MAF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with MAF columns and updated seqinfo, seqnames, 
+#'   seqlengths, seqlevels
 #' @export
-read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seqlengths()) {
-
+#' @keywords reader
+read_maf_file <- function(maf_file_path, 
+                          cpus = 2, 
+                          seq_lengths = gUtils::hg_seqlengths(),
+                          remove_filtered = FALSE,
+                          verbose = TRUE) {
+  
+  # Input validation
+  if (!file.exists(maf_file_path)) {
+    stop(cli::cli_alert_danger(sprintf("MAF file not found: %s", maf_file_path)))
+  }
+  
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Reading MAF file: %s", basename(maf_file_path)))
+  }
+  
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
-
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Setting CPUs: %s", cpus))
+  }
+  
   # Read in MAF with extra speed
-  maf_dt <- data.table::fread(input = maf_file_path,
-                              sep = "\t",
-                              header = TRUE,
-                              stringsAsFactors = FALSE,
-                              nThread = cpus)
-  maf_gr <- dt_to_gr(maf_dt)
-
-  # Sort out seqinfo/levels/lengths mess
-  maf_gr <- gr_refactor_seqs(input_gr = maf_gr, new_levels = seq_lengths)
+  # Handle comments (lines starting with #)
+  maf_dt <- tryCatch({
+    data.table::fread(
+      input = maf_file_path,
+      sep = "\t",
+      header = TRUE,
+      stringsAsFactors = FALSE,
+      nThread = cpus,
+      skip = "Hugo_Symbol",  # Skip any header comments, start at column names
+      showProgress = verbose
+    )
+  }, error = function(e) {
+    stop(cli::cli_alert_danger(sprintf("Error reading MAF file: %s", e$message)))
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Read %d variants with %d columns", nrow(maf_dt), ncol(maf_dt)))
+  }
+  
+  # Validate required columns
+  required_cols <- c("Chromosome", "Start_Position", "End_Position", "Reference_Allele", "Tumor_Seq_Allele2", "Tumor_Sample_Barcode")
+  missing_cols <- setdiff(required_cols, names(maf_dt))
+  
+  if (length(missing_cols) > 0) {
+    stop(cli::cli_alert_danger(sprintf("Missing required MAF columns: %s", paste(missing_cols, collapse = ", "))))
+  }
+  
+  # Check for variant classification column
+  if (!"Variant_Classification" %in% names(maf_dt)) {
+    stop(cli::cli_alert_danger("Variant_Classification column not found - stopping now as filtering functions will not work, check input"))
+  }
+  
+  # Check for variant class column
+  if (!"VARIANT_CLASS" %in% names(maf_dt)) {
+    stop(cli::cli_alert_danger("VARIANT_CLASS column not found - stopping now as filtering functions will not work, check input"))
+  }
+  
+  # Optionally remove filtered variants
+  if (remove_filtered && "FILTER" %in% names(maf_dt)) {
+    n_before <- nrow(maf_dt)
+    maf_dt <- maf_dt[FILTER == "PASS" | FILTER == "." | is.na(FILTER)]
+    n_after <- nrow(maf_dt)
+    if (verbose && n_after < n_before) {
+      cli::cli_alert_info(sprintf("Removed %d filtered variants (kept %d PASS variants)", 
+                                  n_before - n_after, n_after))
+    }
+  }
+  
+  # Remove completely empty rows if present
+  n_before <- nrow(maf_dt)
+  maf_dt <- maf_dt[!is.na(Chromosome) & !is.na(Start_Position)]
+  if (nrow(maf_dt) < n_before && verbose) {
+    cli::cli_alert_info(sprintf("Removed %d rows with missing position data", n_before - nrow(maf_dt)))
+  }
+  
+  # Standardize chromosome names (remove "chr" prefix if present for consistency)
+  # gr_refactor_seqs will handle adding it back if needed based on seq_lengths
+  if (verbose && any(grepl("^chr", maf_dt$Chromosome))) {
+    cli::cli_alert_info("Chromosome names contain 'chr' prefix - will be standardized")
+  }
+  
+  # Convert to GRanges
+  if (verbose) {
+    cli::cli_alert_info("Converting to GenomicRanges object ...")
+  }
+  
+  maf_gr <- tryCatch({
+    dt_to_gr(maf_dt)
+  }, error = function(e) {
+    stop(cli::cli_alert_danger(sprintf("Error converting to GRanges: %s\nCheck that dt_to_gr() is available in your package", 
+                                       e$message)))
+  })
+  
+  # Summary statistics
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Successfully created GRanges with %d variants across %d chromosome(s)", 
+                                   length(maf_gr), 
+                                   length(GenomeInfoDb::seqlevelsInUse(maf_gr))))
+    
+    # Variant class summary if available
+    if ("VARIANT_CLASS" %in% names(S4Vectors::mcols(maf_gr))) {
+      var_class <- table(S4Vectors::mcols(maf_gr)$VARIANT_CLASS)
+      cli::cli_alert_info("Variant class breakdown:")
+      for (i in seq_along(var_class)) {
+        cli::cli_alert(sprintf("  %s: %d", names(var_class)[i], var_class[i]))
+      }
+    }
+    
+    # Variant classification summary if available
+    if ("Variant_Classification" %in% names(S4Vectors::mcols(maf_gr))) {
+      top_classes <- head(sort(table(S4Vectors::mcols(maf_gr)$Variant_Classification), decreasing = TRUE), 5)
+      cli::cli_alert_info("Top 5 variant classifications:")
+      for (i in seq_along(top_classes)) {
+        cli::cli_alert(sprintf("  %s: %d", names(top_classes)[i], top_classes[i]))
+      }
+    }
+  }
+  
   return(maf_gr)
 }
 
@@ -3066,74 +3479,185 @@ read_maf_file <- function(maf_file_path, cpus = 2, seq_lengths = gUtils::hg_seql
 #'
 #' @description
 #' Read in a BED file and convert it to a GenomicRanges object with refactored seq details.
-#' Expects the first 3 columns as chromosome, start, end; However column names are not necessary
-#' The BED file can be either zipped or unzipped.
+#' Expects the first 3 columns as chromosome, start, end; However column names are not necessary.
+#' The BED file can be either zipped or unzipped. BED files use 0-based coordinates which are
+#' automatically converted to 1-based for GenomicRanges.
 #'
-#' @param bed_file_path Path to BED file
-#' @param has_header Does BED file have header line
-#' @param additional_col_names Names for additional columns in BED file, beyond first three
-#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
-#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#' @param bed_file_path Path to BED file (supports .bed, .bed.gz)
+#' @param has_header Logical, does BED file have header line. Default: FALSE
+#' @param additional_col_names Character vector of names for additional columns in BED file, 
+#'   beyond first three. Default: NULL
+#' @param cpus Integer, number of CPUs for reading data, used by `data.table::fread()`. Default: 1
+#' @param seq_lengths Named vector object used as template for new seq details. 
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths
+#' @param allow_nonstandard_chr Logical, whether to allow non-standard chromosomes 
+#'   (decoys, HLA, alt contigs). Default: FALSE
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
 #'
-#' @returns GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, 
+#'   seqlengths, seqlevels
 #' @export
-read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_names = NULL, cpus = 1, seq_lengths = gUtils::hg_seqlengths()) {
-
+#' @keywords reader
+read_bed_file <- function(bed_file_path, 
+                          has_header = FALSE, 
+                          additional_col_names = NULL, 
+                          cpus = 1, 
+                          seq_lengths = gUtils::hg_seqlengths(),
+                          allow_nonstandard_chr = FALSE,
+                          verbose = TRUE) {
+  
+  # Input validation
+  if (!file.exists(bed_file_path)) {
+    stop(sprintf("BED file not found: %s", bed_file_path))
+  }
+  
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Reading BED file: %s", basename(bed_file_path)))
+  }
+  
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
-
-  # Read in file with options to account for various combinations of header/columns
-  # Case 1: no header
-  if(has_header == F) {
-    bed_dt <- data.table::fread(input = bed_file_path,
-                                sep = "\t",
-                                header = has_header,
-                                stringsAsFactors = FALSE,
-                                nThread = cpus)
-
-    # Subcase condition 1: only 3 columns
-    if(ncol(bed_dt) == 3 & is.null(additional_col_names)) {
+  
+  # Read BED file
+  bed_dt <- tryCatch({
+    data.table::fread(
+      input = bed_file_path,
+      sep = "\t",
+      header = has_header,
+      stringsAsFactors = FALSE,
+      nThread = cpus,
+      showProgress = verbose
+    )
+  }, error = function(e) {
+    stop(sprintf("Error reading BED file: %s", e$message))
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Read %d records with %d columns", nrow(bed_dt), ncol(bed_dt)))
+  }
+  
+  # Validate minimum columns
+  if (ncol(bed_dt) < 3) {
+    stop("BED file must have at least 3 columns (chromosome, start, end)")
+  }
+  
+  # Handle column naming
+  if (!has_header) {
+    # No header - assign standard names
+    if (ncol(bed_dt) == 3) {
+      # Only 3 columns
       colnames(bed_dt) <- c("chr", "start", "end")
-    # Subcase condition 2: more than 3 columns, no additional names given
-    } else if(ncol(bed_dt) > 3 & is.null(additional_col_names)) {
+      
+    } else if (ncol(bed_dt) > 3 && is.null(additional_col_names)) {
+      # More than 3 columns, no additional names provided
       colnames(bed_dt)[1:3] <- c("chr", "start", "end")
-    # Subcase condition 3: more than 3 columns, additional names given
-    } else if(ncol(bed_dt) > 3 & !is.null(additional_col_names)) {
+      # Keep default V4, V5, etc. for remaining columns
+      if (verbose) {
+        cli::cli_alert_info(sprintf("Additional %d columns detected - using default names", ncol(bed_dt) - 3))
+      }
+      
+    } else if (ncol(bed_dt) > 3 && !is.null(additional_col_names)) {
+      # More than 3 columns with additional names provided
+      if (length(additional_col_names) != (ncol(bed_dt) - 3)) {
+        warning(sprintf("Number of additional_col_names (%d) doesn't match extra columns (%d)", 
+                        length(additional_col_names), ncol(bed_dt) - 3))
+      }
       colnames(bed_dt) <- c("chr", "start", "end", additional_col_names)
     }
-
-  # Case 2: has a header
-  } else if(has_header == T) {
-    bed_dt <- data.table::fread(input = bed_file_path,
-                                sep = "\t",
-                                header = has_header,
-                                stringsAsFactors = FALSE,
-                                nThread = cpus)
-
-    # Subcase condition 1: only 3 columns
-    if(ncol(bed_dt) == 3 & is.null(additional_col_names)) {
-      colnames(bed_dt) <- c("chr", "start", "end")
-      # Subcase condition 2: more than 3 columns
-    } else if(ncol(bed_dt) > 3 & is.null(additional_col_names)) {
-      colnames(bed_dt)[1:3] <- c("chr", "start", "end")
+    
+  } else {
+    # Has header - standardize first 3 column names
+    colnames(bed_dt)[1:3] <- c("chr", "start", "end")
+    
+    # If additional names provided and columns exist beyond first 3
+    if (!is.null(additional_col_names) && ncol(bed_dt) > 3) {
+      if (length(additional_col_names) == (ncol(bed_dt) - 3)) {
+        colnames(bed_dt)[4:ncol(bed_dt)] <- additional_col_names
+      } else {
+        warning("Number of additional_col_names doesn't match extra columns - keeping header names")
+      }
     }
   }
-
-  # Edge Case: Check for use of 23/24 for chrX/chrY
+  
+  # Validate data types for coordinates
+  if (!is.numeric(bed_dt$start) || !is.numeric(bed_dt$end)) {
+    stop("Start and end columns must be numeric")
+  }
+  
+  # Check for invalid coordinates
+  invalid_coords <- sum(bed_dt$start < 0 | bed_dt$end < bed_dt$start, na.rm = TRUE)
+  if (invalid_coords > 0) {
+    warning(sprintf("Found %d records with invalid coordinates (start < 0 or end < start)", 
+                    invalid_coords))
+  }
+  
+  # Handle chromosome naming edge cases
   chromosome_set <- unique(bed_dt$chr)
-  if(23 %in% chromosome_set) {
-    message("Chromosome `23` detected ...\nConverting to `chrX` ...")
+  
+  # Define standard chromosomes (with and without 'chr' prefix)
+  standard_chromosomes <- c(
+    # With chr prefix
+    paste0("chr", c(1:22, "X", "Y", "M", "MT")),
+    # Without chr prefix
+    as.character(c(1:22, "X", "Y", "M", "MT")),
+    # Numeric codes
+    23, 24, 25
+  )
+  
+  # Check for non-standard chromosomes
+  nonstandard_chr <- setdiff(as.character(chromosome_set), standard_chromosomes)
+  
+  if(length(nonstandard_chr) > 0) {
+    cli::cli_alert_warning("Non-standard chromosomes detected in BED file")
+    # Handle based on user preference
+    if (!allow_nonstandard_chr) {
+      cli::cli_alert_info(sprintf("Removing %d records from non-standard chromosomes", 
+                                  length(nonstandard_chr)))
+      cli::cli_alert_info("Set allow_nonstandard_chr = TRUE to retain these records")
+      
+      # Filter to standard chromosomes only
+      bed_dt <- bed_dt[chr %in% standard_chromosomes]
+      
+    } else {
+      cli::cli_alert_success(sprintf("Retaining %d records from non-standard chromosomes", 
+                                     length(nonstandard_chr)))
+    }
+  }
+  
+  # Check for numeric 23/24 for chrX/chrY
+  if (23 %in% chromosome_set) {
+    if (verbose) {
+      cli::cli_alert("Chromosome `23` detected - converting to `X`")
+    }
     bed_dt$chr <- dplyr::recode(bed_dt$chr, `23` = "X", .default = as.character(bed_dt$chr))
   }
-  if(24 %in% chromosome_set) {
-    message("Chromosome `24` detected ...\nConverting to `chrY` ...")
+  
+  if (24 %in% chromosome_set) {
+    if (verbose) {
+      cli::cli_alert("Chromosome `24` detected - converting to `Y`")
+    }
     bed_dt$chr <- dplyr::recode(bed_dt$chr, `24` = "Y", .default = as.character(bed_dt$chr))
   }
-
-  bed_gr <- dt_to_gr(bed_dt)
-
-  # Sort out seqinfo/levels/lengths mess
-  bed_gr <- gr_refactor_seqs(input_gr = bed_gr, new_levels = seq_lengths)
+  
+  # Convert to GRanges
+  if (verbose) {
+    cli::cli_alert_info("Converting to GenomicRanges object ...")
+  }
+  
+  bed_gr <- tryCatch({
+    dt_to_gr(bed_dt)
+  }, error = function(e) {
+    stop(sprintf("Error converting to GRanges: %s\nCheck that dt_to_gr() is available", 
+                 e$message))
+  })
+  
+  # Summary
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Successfully created GRanges with %d ranges across %d chromosomes", 
+                                   length(bed_gr), 
+                                   length(seqlevelsInUse(bed_gr))))
+  }
+  
   return(bed_gr)
 }
 
@@ -3155,6 +3679,7 @@ read_bed_file <- function(bed_file_path, has_header = FALSE, additional_col_name
 #'
 #' @returns GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
+#' @keywords reader
 read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NULL,
                           caller = NULL, mut_type = NULL, seq_lengths = gUtils::hg_seqlengths()) {
 
@@ -3403,69 +3928,283 @@ read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NU
 #' @title Read in all data files of a specific grep pattern, aggregate them into a single data.table
 #'
 #' @description
-#' Collect all files that match a specific `ls`-style pattern at a specific path, read them into a data.table, then aggregate
-#' all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation table, CNV BED, or SV BEDPE.
+#' Collect all files that match a specific `ls`-style pattern at a specific path, read them into a data.table, 
+#' then aggregate all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation 
+#' table, CNV BED, or SV BEDPE.
 #'
-#' @param path_to_files path to location of files to be aggregated
-#' @param pattern_to_grab `ls`-style pattern used to identify files
-#' @param delim delimiter used in files to be aggregated, expected to be same in all files, default: `\t`
-#' @param has_header indicate if files have a header line, expected to be same in all files, default: TRUE
-#' @param cpus number of cpus for reading in data, used by `data.table::fread()`, default: 1
-#' @param add_uniq_id indicate if the output data.table should include a unique identifier column, derived
-#'  from input file basename, default: FALSE
-#' @param genomic_sort_output indicate if the output data.table should be sorted by genomic coordinate, default: FALSE
+#' @param path_to_files Path to location of files to be aggregated
+#' @param pattern_to_grab `ls`-style pattern (regex) used to identify files
+#' @param delim Delimiter used in files to be aggregated, expected to be same in all files. Default: `\t`
+#' @param has_header Logical, indicate if files have a header line, expected to be same in all files. Default: TRUE
+#' @param cpus Number of CPUs for reading in data, used by `data.table::fread()`. Default: 1
+#' @param add_uniq_id Logical, indicate if the output data.table should include a unique identifier column, 
+#'   derived from input file basename. Default: FALSE
+#' @param id_column_name Character, name for the unique identifier column if add_uniq_id = TRUE. Default: "sample_id"
+#' @param genomic_sort_output Logical, indicate if the output data.table should be sorted by genomic coordinate. 
+#'   Default: FALSE
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
+#' @param full_names Logical, whether to use full file paths (TRUE) or just basenames (FALSE) for pattern matching. 
+#'   Default: FALSE
 #'
 #' @returns data.table object with all data under preserved column construct
 #' @export
 #' @keywords core
-aggregate_these <- function(path_to_files, pattern_to_grab, delim = "\t", has_header = TRUE,
-                            cpus = 1, add_uniq_id = FALSE, genomic_sort_output = FALSE) {
-
+aggregate_these <- function(path_to_files, 
+                            pattern_to_grab, 
+                            delim = "\t", 
+                            has_header = TRUE,
+                            cpus = 1, 
+                            add_uniq_id = FALSE, 
+                            id_column_name = "sample_id",
+                            genomic_sort_output = FALSE,
+                            verbose = TRUE,
+                            full_names = FALSE) {
+  
+  # Input validation
+  if (!dir.exists(path_to_files)) {
+    stop(sprintf("Directory not found: %s", path_to_files))
+  }
+  
+  # Ensure path ends with /
+  if (!grepl("/$", path_to_files)) {
+    path_to_files <- paste0(path_to_files, "/")
+  }
+  
   # Set available threads
   doParallel::registerDoParallel(cores = cpus)
-
+  
   # Find all files at the provided path that match the provided pattern
-  input_files_to_aggregate <- list.files(path = path_to_files,
-                                         pattern = pattern_to_grab)
-
-  # Create output DT to fill with aggregated data
-  aggregate_dt <- data.table::data.table()
-  for(i in 1:length(input_files_to_aggregate)) {
-
-    # Read in single file
-    dt_to_add <- data.table::fread(input = paste0(path_to_files, input_files_to_aggregate[i]),
-                                   sep = delim,
-                                   header = has_header,
-                                   stringsAsFactors = F,
-                                   nThread = cpus)
-
-    # Some file formats do not explicitly have a patient/sample column or any unique identifier
-    # Let's add one derived from the input file name, if needed
-    if(add_uniq_id) {
-      uniq_id <- stringr::str_remove(string = input_files_to_aggregate[i], pattern = "\\..*$")
-      dt_to_add$id <- uniq_id
-    }
-
-    # Add to aggregate DT
-    aggregate_dt <- gUtils::rrbind(aggregate_dt, dt_to_add, as.data.table = T)
+  input_files_to_aggregate <- list.files(
+    path = path_to_files,
+    pattern = pattern_to_grab,
+    full.names = full_names
+  )
+  
+  # Check if any files were found
+  if (length(input_files_to_aggregate) == 0) {
+    stop(sprintf("No files found matching pattern '%s' in directory: %s", 
+                 pattern_to_grab, path_to_files))
   }
-
-  # For proper genomic sorting need to convert DT to GR then back
-  if(genomic_sort_output) {
-
-    # TODO: BEDPE files don't translate from DT to GR with standard header, likely need gGnome junctions
-    aggregate_gr <- dt_to_gr(input_dt = aggregate_dt)
-    aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
-
-    # Remove strand and width columns that are added during this conversion and not part of original
-    if(sum(colnames(aggregate_dt)[4:5] == c("strand","width")) == 2) {
-      aggregate_dt <- aggregate_dt[,-c(4:5)]
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Found %d files matching pattern '%s'", 
+                                   length(input_files_to_aggregate), pattern_to_grab))
+  }
+  
+  # Initialize list to store data.tables (more efficient than repeated rbind)
+  dt_list <- vector("list", length(input_files_to_aggregate))
+  
+  # Read in all files
+  for (i in seq_along(input_files_to_aggregate)) {
+    
+    file_path <- if (full_names) {
+      input_files_to_aggregate[i]
+    } else {
+      paste0(path_to_files, input_files_to_aggregate[i])
+    }
+    
+    if (verbose) {
+      cli::cli_alert_info(sprintf("Reading file %d/%d: %s", 
+                                  i, length(input_files_to_aggregate), 
+                                  basename(file_path)))
+    }
+    
+    # Read in single file with error handling
+    dt_to_add <- tryCatch({
+      data.table::fread(
+        input = file_path,
+        sep = delim,
+        header = has_header,
+        stringsAsFactors = FALSE,
+        nThread = cpus,
+        showProgress = FALSE
+      )
+    }, error = function(e) {
+      warning(sprintf("Error reading file %s: %s", basename(file_path), e$message))
+      return(NULL)
+    })
+    
+    # Skip if file couldn't be read
+    if (is.null(dt_to_add)) {
+      next
+    }
+    
+    # Check if file is empty
+    if (nrow(dt_to_add) == 0) {
+      warning(sprintf("File %s is empty, skipping", basename(file_path)))
+      next
+    }
+    
+    # Add unique identifier column if requested
+    if (add_uniq_id) {
+      # Extract ID from filename (remove extension)
+      uniq_id <- stringr::str_remove(
+        string = basename(input_files_to_aggregate[i]), 
+        pattern = "\\..*$"
+      )
+      dt_to_add[[id_column_name]] <- uniq_id
+    }
+    
+    # Store in list
+    dt_list[[i]] <- dt_to_add
+  }
+  
+  # Remove NULL entries (failed reads)
+  dt_list <- dt_list[!sapply(dt_list, is.null)]
+  
+  if (length(dt_list) == 0) {
+    stop("No files could be successfully read")
+  }
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Successfully read %d files, aggregating ...", length(dt_list)))
+  }
+  
+  # Aggregate all data.tables using rbindlist (more efficient than repeated rbind)
+  aggregate_dt <- tryCatch({
+    data.table::rbindlist(dt_list, use.names = TRUE, fill = TRUE)
+  }, error = function(e) {
+    # Fall back to gUtils::rrbind if rbindlist fails
+    warning(sprintf("rbindlist failed, using gUtils::rrbind: %s", e$message))
+    aggregate_dt <- data.table::data.table()
+    for (dt in dt_list) {
+      aggregate_dt <- gUtils::rrbind(aggregate_dt, dt, as.data.table = TRUE)
+    }
+    return(aggregate_dt)
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Aggregated data contains %d rows and %d columns", 
+                                   nrow(aggregate_dt), ncol(aggregate_dt)))
+  }
+  
+  # Genomic sorting if requested
+  if (genomic_sort_output) {
+    
+    if (verbose) {
+      cli::cli_alert_info("Detecting file format for genomic sorting...")
+    }
+    
+    # Detect if this is a BEDPE format (has chr1/chr2 or chrom1/chrom2 columns)
+    is_bedpe <- any(grepl("^([Cc]hr1)|([Cc]hrom1)", names(aggregate_dt))) && 
+      any(grepl("^([Cc]hr2)|([Cc]hrom2)", names(aggregate_dt)))
+    
+    if (is_bedpe) {
+      
+      if (verbose) {
+        cli::cli_alert("Detected BEDPE format - using BEDPE-specific sorting ...")
+      }
+      
+      tryCatch({
+        aggregate_dt <- sort_bedpe(aggregate_dt)
+        
+        if (verbose) {
+          cli::cli_alert_success("BEDPE genomic sorting completed")
+        }
+        
+      }, error = function(e) {
+        warning(sprintf("BEDPE sorting failed: %s\nReturning unsorted data", e$message))
+      })
+      
+    } else {
+      
+      if (verbose) {
+        cli::cli_alert("Detected BED(-like) format - using standard genomic sorting ...")
+      }
+      
+      tryCatch({
+        # Convert to GRanges for proper genomic sorting
+        aggregate_gr <- dt_to_gr(input_dt = aggregate_dt)
+        
+        # Convert back to data.table
+        aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
+        
+        # Remove strand and width columns that are added during conversion
+        cols_to_remove <- c()
+        if ("strand" %in% names(aggregate_dt)) {
+          cols_to_remove <- c(cols_to_remove, "strand")
+        }
+        if ("width" %in% names(aggregate_dt)) {
+          cols_to_remove <- c(cols_to_remove, "width")
+        }
+        
+        if (length(cols_to_remove) > 0) {
+          aggregate_dt[, (cols_to_remove) := NULL]
+        }
+        
+        if (verbose) {
+          cli::cli_alert_success("Standard genomic sorting completed")
+        }
+        
+      }, error = function(e) {
+        warning(sprintf("Genomic sorting failed: %s\nReturning unsorted data", e$message))
+      })
     }
   }
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Aggregation complete: %d total variants", nrow(aggregate_dt)))
+  }
+  
   return(aggregate_dt)
 }
 
-
+#' @name sort_bedpe
+#' @title Sort a BEDPE
+#'
+#' @description
+#' Sort BEDPE data.table by genomic coordinates in chr-notation aware, header
+#' adaptable manner
+#'
+#' @param bedpe_dt data.table in BEDPE format
+#' @return Sorted data.table
+#' @export
+sort_bedpe <- function(bedpe_dt) {
+  
+  # Validate input
+  if (!inherits(bedpe_dt, "data.table")) {
+    stop("Input must be a data.table object")
+  }
+  
+  # Detect chromosome column names
+  chr1_col <- grep("^([Cc]hr1)|([Cc]hrom1|#chr1)", colnames(bedpe_dt), value = TRUE)[1]
+  chr2_col <- grep("^([Cc]hr2)|([Cc]hrom2)", colnames(bedpe_dt), value = TRUE)[1]
+  
+  if (is.na(chr1_col) || is.na(chr2_col)) {
+    warning("Cannot find chromosome columns for sorting")
+    return(bedpe_dt)
+  }
+  
+  # Helper function to extract numeric chromosome value
+  extract_chr_number <- function(chr_vec) {
+    chr_clean <- stringr::str_remove(chr_vec, "^chr")
+    chr_num <- suppressWarnings(as.numeric(chr_clean))
+    
+    chr_num[chr_clean == "X"] <- 23
+    chr_num[chr_clean == "Y"] <- 24
+    chr_num[chr_clean %in% c("M", "MT")] <- 25
+    
+    remaining_na <- is.na(chr_num)
+    if (any(remaining_na)) {
+      unique_other <- unique(chr_clean[remaining_na])
+      chr_num[remaining_na] <- 26 + match(chr_clean[remaining_na], unique_other)
+    }
+    
+    return(chr_num)
+  }
+  
+  # Add sorting columns
+  bedpe_dt[, chr1_sort := extract_chr_number(get(chr1_col))]
+  bedpe_dt[, chr2_sort := extract_chr_number(get(chr2_col))]
+  
+  # Sort by chr1, start1, end1, then chr2, start2, end2
+  data.table::setorderv(bedpe_dt, c("chr1_sort", "start1", "end1", "chr2_sort", "start2", "end2"))
+  
+  # Remove sorting columns
+  bedpe_dt[, c("chr1_sort", "chr2_sort") := NULL]
+  
+  return(bedpe_dt)
+}
 
 
 #

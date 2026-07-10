@@ -18,3 +18,4 @@ GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths,
 Read in a GTF file, subset to protein coding genes, and convert it to a GenomicRanges object with refactored seq details.
 The GTF file can be either zipped or unzipped.
 }
+\keyword{reader}

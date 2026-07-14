@@ -2,20 +2,41 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_gtf_file}
 \alias{read_gtf_file}
-\title{Read in a GTF file, such as one from Ensembl, and convert to GenomicRanges object}
+\title{Read in a GTF file and convert to GenomicRanges or data.table}
 \usage{
-read_gtf_file(gtf_file_path, seq_lengths = gUtils::hg_seqlengths())
+read_gtf_file(
+  gtf_file,
+  output_type = c("gr", "dt"),
+  feature_type = NULL,
+  gene_biotype = NULL,
+  seq_lengths = gUtils::hg_seqlengths(),
+  verbose = TRUE
+)
 }
 \arguments{
-\item{gtf_file_path}{Path to GTF file}
+\item{gtf_file}{Path to GTF file (supports .gtf, .gtf.gz)}
 
-\item{seq_lengths}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
+\item{output_type}{Character string specifying output format:
+gr="GenomicRanges" (default) or dt="data.table"}
+
+\item{feature_type}{Character vector of feature types to retain (e.g., "gene", "transcript",
+"exon", "CDS"). If NULL, all features are retained. Default: NULL}
+
+\item{gene_biotype}{Character vector of gene biotypes to retain (e.g., "protein_coding",
+"lncRNA"). If NULL, all biotypes are retained. Default: NULL}
+
+\item{seq_lengths}{Named vector object used as template for new seq details.
+See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths.
+Only used when output_type = "GenomicRanges"}
+
+\item{verbose}{Logical, whether to print progress messages. Default: TRUE}
 }
 \value{
-GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+GenomicRanges object or data.table with GTF data and updated seqinfo
 }
 \description{
-Read in a GTF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
-The GTF file can be either zipped or unzipped.
+Read in a GTF file, such as one from Ensembl, and convert it to a GenomicRanges object
+or data.table with refactored seq details. The GTF file can be either zipped or unzipped.
+Supports filtering by feature type and additional GTF-specific processing.
 }
 \keyword{reader}

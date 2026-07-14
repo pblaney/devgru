@@ -159,6 +159,163 @@ get_data <- function(name_of_data) {
   e[[name]]
 }
 
+#' @name get_file_format
+#' @title Detect file format from filename and/or content
+#' 
+#' @description
+#' Detect a file's specific format, at scale
+#' 
+#' @param filename Name of file with full path
+#' @keywords internal
+get_file_format <- function(filename) {
+  
+  # Check extension patterns
+  if (grepl("\\.bedpe(\\.gz)?$", filename, ignore.case = TRUE)) {
+    return("bedpe")
+  }
+  
+  if (grepl("\\.bed(\\.gz)?$", filename, ignore.case = TRUE)) {
+    return("bed")
+  }
+  
+  if (grepl("\\.maf(\\.gz|\\.txt)?$", filename, ignore.case = TRUE)) {
+    return("maf")
+  }
+  
+  if (grepl("\\.vcf(\\.gz|\\.bgz)?$", filename, ignore.case = TRUE)) {
+    return("vcf")
+  }
+  
+  # If extension not conclusive, peek at file content
+  if (file.exists(filename)) {
+    # Read first few non-comment lines
+    first_lines <- tryCatch({
+      if (grepl("\\.gz$", filename)) {
+        readLines(gzfile(filename), n = 10)
+      } else {
+        readLines(filename, n = 10)
+      }
+    }, error = function(e) {
+      return(NULL)
+    })
+    
+    if (!is.null(first_lines)) {
+      # Remove comment lines
+      data_lines <- first_lines[!grepl("^#", first_lines)]
+      
+      if (length(data_lines) > 0) {
+        # Check for VCF format
+        if (any(grepl("^##fileformat=VCF", first_lines))) {
+          return("vcf")
+        }
+        
+        # Check first data line for format hints
+        first_data <- data_lines[1]
+        fields <- strsplit(first_data, "\t")[[1]]
+        
+        # Check for MAF (Hugo_Symbol is distinctive)
+        if (any(grepl("Hugo_Symbol", first_lines))) {
+          return("maf")
+        }
+        
+        # Check for BEDPE (6+ columns with paired coordinates)
+        if (length(fields) >= 6) {
+          # Look for chr1/start1/end1/chr2/start2/end2 pattern in header
+          header_line <- first_lines[!grepl("^#", first_lines)][1]
+          if (grepl("chr1|chrom1|start1|end1|chr2|chrom2|start2|end2", 
+                    header_line, ignore.case = TRUE)) {
+            return("bedpe")
+          }
+        }
+        
+        # Check for BED (3+ columns starting with chr/chromosome)
+        if (length(fields) >= 3 && grepl("^(chr|[0-9]+|X|Y)", fields[1], ignore.case = TRUE)) {
+          return("bed")
+        }
+      }
+    }
+  }
+  
+  # Default to generic if format cannot be determined
+  return("generic")
+}
+
+#' @name get_reader
+#' @title Read file using appropriate format-specific reader
+#' 
+#' @description
+#' Detect and utilize the necessary pre-built reader for each file of a specific
+#' format. Otherwise, use generic data.table reader
+#' 
+#' @param file_path Full path to file
+#' @param file_format Character string to force specific format detection: "auto" (default),
+#'   "bed", "bedpe", "maf", "vcf", "generic". Default: "auto"
+#' @param delim Delimiter for generic files.
+#' @param has_header Logical, if files have header line. Default: TRUE
+#' @param cpus Number of CPUs for reading data. Default: 1
+#' @param seq_lengths Named vector for seqinfo refactoring (genomic formats only). 
+#'   Default: gUtils::hg_seqlengths()
+#' @param verbose Logical, print progress messages. Default: FALSE
+#' @param ... Additional arguments passed to format-specific readers
+#' 
+#' @keywords internal
+get_reader <- function(file_path, file_format, delim, has_header,
+                       cpus, seq_lengths, verbose, ...) {
+  
+  switch(file_format,
+         "bed" = {
+           read_bed_file(
+             bed_file = file_path,
+             output_type = "dt",
+             has_header = has_header,
+             cpus = cpus,
+             seq_lengths = seq_lengths,
+             verbose = verbose,
+             ...
+           )
+         },
+         "bedpe" = {
+           read_bedpe_file(
+             bedpe_file = file_path,
+             output_type = "dt",
+             keep_metadata = TRUE,
+             verbose = verbose,
+             ...
+           )
+         },
+         "maf" = {
+           read_maf_file(
+             maf_file = file_path,
+             output_type = "dt",
+             cpus = cpus,
+             seq_lengths = seq_lengths,
+             verbose = verbose,
+             ...
+           )
+         },
+         "vcf" = {
+           read_vcf_file(
+             vcf_file = file_path,
+             output_type = "dt",
+             cpus = cpus,
+             seq_lengths = seq_lengths,
+             verbose = verbose,
+             ...
+           )
+         },
+         "generic" = {
+           data.table::fread(
+             input = file_path,
+             sep = delim,
+             header = has_header,
+             stringsAsFactors = FALSE,
+             nThread = cpus,
+             showProgress = FALSE
+           )
+         },
+         stop(sprintf("Unknown file format: %s", file_format))
+  )
+}
 
 #
 #
@@ -564,6 +721,7 @@ kit_loadout <- function(update_kit = F) {
 #'
 #' @param input_gr GenomicRanges object to refactor
 #' @param new_levels Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#' @param sort_gr Sort the output GenomicRanges object
 #'
 #' @examples
 #' # Converting between reference genomes is complicated and proper seqinfo is hard
@@ -581,7 +739,7 @@ kit_loadout <- function(update_kit = F) {
 #' @returns GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 #' @keywords core
-gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
+gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths(), sort_gr = TRUE) {
   # First, make sure we match input GR 'chr' notation with the desired seqs
   if(length(grep(x = names(new_levels), pattern = "^chr")) > 0) {
     gr <- gUtils::gr.chr(input_gr)
@@ -604,14 +762,138 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths()) {
   # Now ensure seqinfo matches seqnames
   gr@seqinfo <- GenomeInfoDb::Seqinfo(seqnames = names(new_levels)[1:24],
                                       seqlengths = new_levels[1:24])
-
-  # Final sort to ensure ranges are properly sorted by genomic coordinate
-  gr <- GenomicRanges::sort.GenomicRanges(gr, ignore.strand = TRUE)
+  
+  if (sort_gr) {
+    # Final sort to ensure ranges are properly sorted by genomic coordinate
+    gr <- GenomicRanges::sort.GenomicRanges(gr, ignore.strand = TRUE)
+  }
 
   # And complete the remaining seqinfo columns for genome and isCircular
   GenomeInfoDb::genome(gr) <- "GRCh38"
   GenomeInfoDb::isCircular(gr) <- rep(FALSE,24)
   return(gr)
+}
+
+#' @name gi_refactor_seqs
+#' @title Refactor seqinfo of GInteractions object for easy harmony
+#'
+#' @description
+#' Single command to refactor all seq details of a GInteractions object to easily harmonize 
+#' with any other genomic object. This function updates seqinfo for both anchor regions.
+#' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, 
+#' see `gUtils::hg_seqlengths()`
+#' Users can adjust this using the `new_levels` parameter.
+#'
+#' @param input_gi GInteractions object to refactor
+#' @param new_levels Named vector object used as the template for new seq details, 
+#'   see `gUtils::hg_seqlengths()` for example
+#'
+#' @returns GInteractions object with updated seqinfo for both anchors
+#' @export
+#' @keywords core
+gi_refactor_seqs <- function(input_gi, 
+                             new_levels = gUtils::hg_seqlengths()) {
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg InteractionSet} required for this workflow function"))
+  }
+  
+  if(!inherits(input_gi, "GInteractions")) {
+    stop("Input must be a GInteractions object")
+  }
+  
+  # Store metadata before processing
+  original_mcols <- S4Vectors::mcols(input_gi)
+  
+  # Extract both anchors
+  anchor1 <- InteractionSet::anchors(input_gi, type = "first")
+  anchor2 <- InteractionSet::anchors(input_gi, type = "second")
+  
+  # Add metadata back to each anchor so it is carried over during refactoring
+  S4Vectors::mcols(anchor1) <- original_mcols
+  S4Vectors::mcols(anchor2) <- original_mcols
+  
+  # Refactor both anchors
+  anchor1_refactored <- gr_refactor_seqs(input_gr = anchor1,
+                                         new_levels = new_levels,
+                                         sort_gr = FALSE)
+  anchor2_refactored <- gr_refactor_seqs(input_gr = anchor2,
+                                         new_levels = new_levels,
+                                         sort_gr = FALSE)
+  
+  # Check if we lost any interactions
+  n_before <- length(input_gi)
+  n_after <- length(anchor1_refactored)
+  
+  if(n_after < n_before) {
+    message("Removed ", n_before - n_after, " interactions due to invalid sequence names")
+  }
+  
+  if(n_after == 0) {
+    warning("All interactions were removed. Check that sequence names match new_levels.")
+    return(InteractionSet::GInteractions(anchor1_refactored, anchor2_refactored))
+  }
+  
+  # Recreate GInteractions with refactored anchors
+  gi_refactored <- InteractionSet::GInteractions(anchor1 = anchor1_refactored,
+                                                 anchor2 = anchor2_refactored)
+  
+  return(gi_refactored)
+}
+
+#' @name grl_refactor_seqs
+#' @title Refactor seqinfo of GRangesList object for easy harmony
+#'
+#' @description
+#' Single command to refactor all seq details of a GRangesList object to easily harmonize 
+#' with any other genomic object. This function updates seqinfo for all GRanges elements 
+#' in the list.
+#' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, 
+#' see `gUtils::hg_seqlengths()`
+#' Users can adjust this using the `new_levels` parameter.
+#'
+#' @param input_grl GRangesList object to refactor
+#' @param new_levels Named vector object used as the template for new seq details, 
+#'   see `gUtils::hg_seqlengths()` for example
+#'
+#' @returns GRangesList object with updated seqinfo for all elements
+#' @export
+#' @keywords core
+grl_refactor_seqs <- function(input_grl, 
+                              new_levels = gUtils::hg_seqlengths()) {
+  
+  if(!inherits(input_grl, "GRangesList")) {
+    stop("Input must be a GRangesList object")
+  }
+  
+  if(length(input_grl) == 0) {
+    warning("Input GRangesList is empty")
+    return(input_grl)
+  }
+  
+  # Store original names and metadata
+  original_names <- names(input_grl)
+  original_mcols <- S4Vectors::mcols(input_grl)
+  
+  # Refactor all elements in the list
+  grl_refactored_list <- lapply(input_grl, gr_refactor_seqs, new_levels = new_levels, sort_gr = FALSE)
+  
+  # Convert back to GRangesList
+  grl_refactored <- GenomicRanges::GRangesList(grl_refactored_list)
+  
+  # Restore names
+  if(!is.null(original_names)) {
+    names(grl_refactored) <- original_names
+  }
+  
+  # Set seqinfo at the GRangesList level
+  new_seqinfo <- GenomeInfoDb::Seqinfo(seqnames = names(new_levels)[1:24],
+                                       seqlengths = new_levels[1:24],
+                                       isCircular = rep(FALSE, 24),
+                                       genome = "GRCh38")
+  GenomeInfoDb::seqinfo(grl_refactored) <- new_seqinfo
+  
+  return(grl_refactored)
 }
 
 #' @name dt_to_gr
@@ -654,6 +936,327 @@ dt_to_gr <- function(input_dt) {
   )
   return(gr)
 }
+
+#' @name bedpe_to_gi
+#' @title Convert BEDPE-like data.table to GInteractions
+#'
+#' @description
+#' Single command to smartly convert a BEPDE-like data.table to a GIinteractions
+#' object while preserving all metadata.
+#'
+#' @param input_dt data.table with BEDPE-like columns
+#' @param keep_metadata Logical, whether to preserve metadata (default: TRUE)
+#' 
+#' @return GInteractions object
+#' @export
+#' @keywords core
+bedpe_to_gi <- function(input_dt, keep_metadata = TRUE) {
+  
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("plyinteractions"))) {
+    stop(cli::cli_alert_danger("Package {.pkg plyinteractions} required for this workflow function"))
+  }
+  
+  # Read data.table
+  if (!inherits(input_dt, "data.table")) {
+    stop("Input must be a data.table object")
+  } else {
+    bedpe_dt <- input_dt
+  }
+  
+  # Dynamic column detection for breakpoint 1
+  chr1_col <- grep("^([Cc]hr1)|([Cc]hrom1)|(seqnames1)|#chr1", colnames(bedpe_dt), value = TRUE)[1]
+  start1_col <- grep("^[Ss]tart1", colnames(bedpe_dt), value = TRUE)[1]
+  end1_col <- grep("^[Ee]nd1", colnames(bedpe_dt), value = TRUE)[1]
+  strand1_col <- grep("^[Ss]trand1", colnames(bedpe_dt), value = TRUE)[1]
+  
+  # Dynamic column detection for breakpoint 2
+  chr2_col <- grep("^([Cc]hr2)|([Cc]hrom2)|(seqnames2)", colnames(bedpe_dt), value = TRUE)[1]
+  start2_col <- grep("^[Ss]tart2", colnames(bedpe_dt), value = TRUE)[1]
+  end2_col <- grep("^[Ee]nd2", colnames(bedpe_dt), value = TRUE)[1]
+  strand2_col <- grep("^[Ss]trand2", colnames(bedpe_dt), value = TRUE)[1]
+  
+  # Check required columns
+  missing_cols <- character()
+  if(is.na(chr1_col)) missing_cols <- c(missing_cols, "chr1/chrom1/seqnames1")
+  if(is.na(start1_col)) missing_cols <- c(missing_cols, "start1")
+  if(is.na(end1_col)) missing_cols <- c(missing_cols, "end1")
+  if(is.na(chr2_col)) missing_cols <- c(missing_cols, "chr2/chrom2/seqnames2")
+  if(is.na(start2_col)) missing_cols <- c(missing_cols, "start2")
+  if(is.na(end2_col)) missing_cols <- c(missing_cols, "end2")
+  
+  if(length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  # Standardize column names for plyinteractions
+  data.table::setnames(bedpe_dt,
+                       c(chr1_col, start1_col, end1_col, chr2_col, start2_col, end2_col),
+                       c("seqnames1", "start1", "end1", "seqnames2", "start2", "end2"),
+                       skip_absent = TRUE)
+  
+  # Handle strand columns
+  if(!is.na(strand1_col)) {
+    data.table::setnames(bedpe_dt, strand1_col, "strand1", skip_absent = TRUE)
+  } else {
+    bedpe_dt[, strand1 := "*"]
+  }
+  
+  if(!is.na(strand2_col)) {
+    data.table::setnames(bedpe_dt, strand2_col, "strand2", skip_absent = TRUE)
+  } else {
+    bedpe_dt[, strand2 := "*"]
+  }
+  
+  # Convert "." to "*" for strand
+  bedpe_dt[strand1 == ".", strand1 := "*"]
+  bedpe_dt[strand2 == ".", strand2 := "*"]
+  
+  # Convert to character
+  bedpe_dt[, seqnames1 := as.character(seqnames1)]
+  bedpe_dt[, seqnames2 := as.character(seqnames2)]
+  
+  # Identify metadata columns
+  core_cols <- c("seqnames1", "start1", "end1", "strand1",
+                 "seqnames2", "start2", "end2", "strand2")
+  metadata_cols <- setdiff(colnames(bedpe_dt), core_cols)
+  
+  # Create GInteractions using plyinteractions
+  if(keep_metadata && length(metadata_cols) > 0) {
+    gi <- bedpe_dt %>%
+      plyinteractions::as_ginteractions(
+        seqnames1 = seqnames1,
+        start1 = start1,
+        end1 = end1,
+        strand1 = strand1,
+        seqnames2 = seqnames2,
+        start2 = start2,
+        end2 = end2,
+        strand2 = strand2,
+        keep.extra.columns = TRUE
+      )
+  } else {
+    gi <- bedpe_dt %>%
+      dplyr::select(dplyr::all_of(core_cols)) %>%
+      plyinteractions::as_ginteractions(
+        seqnames1 = seqnames1,
+        start1 = start1,
+        end1 = end1,
+        strand1 = strand1,
+        seqnames2 = seqnames2,
+        start2 = start2,
+        end2 = end2,
+        strand2 = strand2
+      )
+  }
+  
+  # Sort out seqinfo
+  gi <- gi_refactor_seqs(input_gi = gi)
+  cli::cli_alert_success("Created GInteractions")
+  
+  return(gi)
+}
+
+#' @name gi_to_grl
+#' @title Convert GInteractions to GRangesList
+#'
+#' @description 
+#' Single command to smartly convert GIinteractions to a GRangesList
+#' object while preserving all metadata.
+#'
+#' @param input_gi GInteractions object
+#' @param keep_metadata Logical, whether to preserve metadata (default: TRUE)
+#' 
+#' @return GRangesList where each element contains a pair of breakpoints
+#' @export
+#' @keywords core
+gi_to_grl <- function(input_gi, keep_metadata = TRUE) {
+  
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg InteractionSet} required for this workflow function"))
+  }
+  
+  if(!inherits(input_gi, "GInteractions")) {
+    stop("Input must be a GInteractions object")
+  }
+  
+  # Extract anchors (breakpoints)
+  anchor1 <- InteractionSet::anchors(input_gi, type = "first")
+  anchor2 <- InteractionSet::anchors(input_gi, type = "second")
+  
+  # Add metadata to anchors if requested
+  if(keep_metadata && length(S4Vectors::mcols(input_gi)) > 0) {
+    S4Vectors::mcols(anchor1) <- S4Vectors::mcols(input_gi)
+    S4Vectors::mcols(anchor2) <- S4Vectors::mcols(input_gi)
+  }
+  
+  # Create list of GRanges pairs
+  grl_list <- vector("list", length(input_gi))
+  
+  for(i in seq_along(input_gi)) {
+    grl_list[[i]] <- c(anchor1[i], anchor2[i])
+  }
+  
+  # Convert to GRangesList
+  grl <- GenomicRanges::GRangesList(grl_list)
+  
+  # Preserve names if present
+  if(!is.null(names(input_gi))) {
+    names(grl) <- names(input_gi)
+  } else {
+    names(grl) <- paste0("pair_", seq_along(grl))
+  }
+  
+  # Sort out seqinfo
+  grl <- grl_refactor_seqs(input_grl = grl)
+  cli::cli_alert_success("Created GRangesList")
+  
+  return(grl)
+}
+
+#' @name gi_to_bedpe
+#' @title Convert GInteractions to BEDPE data.table format
+#'
+#' @description
+#' Converts a BEDPE representation GInteractions object into a BEDPE data.table while
+#' preserving object metadata
+#'
+#' @param input_gi GInteractions object
+#' @param include_metadata Logical, whether to include metadata columns (default: TRUE)
+#' @return data.table in BEDPE format
+#' @keywords converter
+gi_to_bedpe <- function(input_gi, include_metadata = TRUE) {
+  
+  # Check for Suggests libraries
+  if(!devgru:::require_namespaces(pkgs = c("InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg plyinteractions, InteractionSet} required for this workflow function"))
+  }
+  
+  if(!inherits(input_gi, "GInteractions")) {
+    stop("Input must be a GInteractions object")
+  }
+  
+  # Convert to data.table using plyinteractions
+  bedpe_dt <- dplyr::as_tibble(input_gi) %>% 
+    data.table::as.data.table()
+  
+  # Standardize column names to BEDPE format
+  col_mapping <- c(
+    "seqnames1" = "chr1",
+    "start1" = "start1", 
+    "end1" = "end1",
+    "seqnames2" = "chr2",
+    "start2" = "start2",
+    "end2" = "end2",
+    "strand1" = "strand1",
+    "strand2" = "strand2"
+  )
+  
+  # Rename columns that exist
+  for(old_name in names(col_mapping)) {
+    if(old_name %in% colnames(bedpe_dt)) {
+      data.table::setnames(bedpe_dt, old_name, col_mapping[old_name], skip_absent = TRUE)
+    }
+  }
+  
+  # Convert chromosomes to character
+  bedpe_dt[, chr1 := as.character(chr1)]
+  bedpe_dt[, chr2 := as.character(chr2)]
+  
+  # Add type and score placeholders if not present
+  if(!"type" %in% colnames(bedpe_dt)) {
+    bedpe_dt[, type := "."]
+  }
+  if(!"score" %in% colnames(bedpe_dt)) {
+    bedpe_dt[, score := "."]
+  }
+  
+  # Handle strand conversion
+  bedpe_dt[strand1 == "*", strand1 := "."]
+  bedpe_dt[strand2 == "*", strand2 := "."]
+  
+  # Reorder columns - core BEDPE columns first
+  core_cols <- c("chr1", "start1", "end1", "chr2", "start2", "end2", 
+                 "type", "score", "strand1", "strand2")
+  other_cols <- setdiff(colnames(bedpe_dt), core_cols)
+  bedpe_dt <- bedpe_dt[, c(intersect(core_cols, colnames(bedpe_dt)), other_cols), with = FALSE]
+  
+  # remove unneeded width columns
+  bedpe_dt <- bedpe_dt[,-c("width1","width2")]
+  cli::cli_alert_success("Created BEDPE data.table")
+  
+  return(bedpe_dt)
+}
+
+#' @name grl_to_gi
+#' @title Convert GenomicRangesList to GInteractions
+#'
+#' @description
+#' Converts a BEDPE representation GenomicRangesList object into a GInteractions object
+#' while preserving object metadata
+#'
+#' @param input_grl GenomicRangesList where each element contains exactly 2 ranges
+#' @param keep_metadata Logical, whether to preserve metadata (default: TRUE)
+#' @return GInteractions object
+#' @keywords converter
+grl_to_gi <- function(input_grl, keep_metadata = TRUE) {
+  
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg InteractionSet} required for this workflow function"))
+  }
+  
+  if(!inherits(input_grl, "GRangesList")) {
+    stop("Input must be a GenomicRangesList object")
+  }
+  
+  # Check that all elements have exactly 2 ranges
+  pair_lengths <- lengths(input_grl)
+  if(!all(pair_lengths == 2)) {
+    warning("Some elements do not contain exactly 2 ranges. These will be skipped.")
+    grl <- input_grl[pair_lengths == 2]
+  }
+  
+  if(length(grl) == 0) {
+    stop("No valid breakpoint pairs found (each element must contain exactly 2 ranges)")
+  }
+  
+  # Extract first and second breakpoints
+  anchor1_list <- vector("list", length(grl))
+  anchor2_list <- vector("list", length(grl))
+  
+  for(i in seq_along(grl)) {
+    gr_pair <- grl[[i]]
+    anchor1_list[[i]] <- gr_pair[1]
+    anchor2_list[[i]] <- gr_pair[2]
+  }
+  
+  # Combine into GRanges objects
+  anchor1 <- do.call(c, anchor1_list)
+  anchor2 <- do.call(c, anchor2_list)
+  
+  # Create GInteractions
+  gi <- InteractionSet::GInteractions(anchor1, anchor2)
+  
+  # Add metadata from first anchor if requested
+  # (assumes metadata is shared between both anchors)
+  if(keep_metadata && length(S4Vectors::mcols(anchor1)) > 0) {
+    S4Vectors::mcols(gi) <- S4Vectors::mcols(anchor1)
+  }
+  
+  # Preserve names
+  if(!is.null(names(grl))) {
+    names(gi) <- names(grl)
+  }
+  
+  # Sort out seqinfo
+  gi <- gi_refactor_seqs(input_gi = gi)
+  cli::cli_alert_success("Created GInteractions")
+  
+  return(gi)
+}
+
 
 #' @name gr_sanitycheck
 #' @title Check if input is a GenomicRanges object, plus optional sanity check of column names
@@ -935,6 +1538,18 @@ gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
     dplyr::rename("chrom" = seqnames, "loc.start" = start, "loc.end" = end)
   return(seg)
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 #' @name get_igh_trx_subtype
 #' @title Detect Canonical IGH Translocations in Multiple Myeloma
@@ -3286,84 +3901,161 @@ get_corrected_cnv_profile <- function(cnv_obj, caller, sample_id = NULL) {
 #
 #
 
-#' @name read_gtf_file
-#' @title Read in a GTF file, such as one from Ensembl, and convert to GenomicRanges object
+#' @name read_bedpe_file
+#' @title Read BEDPE File with Flexible Output Format
 #'
 #' @description
-#' Read in a GTF file which contains a number of columns and convert it to a GenomicRanges object with refactored seq details.
-#' The GTF file can be either zipped or unzipped.
+#' Read in a BEDPE file and convert it to a GInteractions object with refactored
+#' seq details. Flexible to different naming conventions but expects the 6 columns
+#' for breakpoint chr1, start1, end1, and breakpoint chr2, start2, end2.
+#' Can also return data.table or GRangesList for convenience.
 #'
-#' @param gtf_file_path Path to GTF file
-#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
-#'
-#' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @param bedpe_file Path to BEDPE file or data.table/data.frame
+#' @param output_type Character string specifying output format: 
+#'   gi="GInteractions" (default), dt="data.table", or grl="GRangesList"
+#' @param keep_metadata Logical, whether to preserve metadata (default: TRUE)
+#' @param verbose Logical, whether to print progress messages. (default: TRUE)
+#' 
+#' @return GInteractions, data.table, or GRangesList object depending on output_type
 #' @export
-#' @keywords reader
-read_gtf_file <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
-
-  gtf_gr <- rtracklayer::import(gtf_file_path)
-
-  # Sort out seqinfo/levels/lengths mess
-  gtf_gr <- gr_refactor_seqs(input_gr = gtf_gr, new_levels = seq_lengths)
-  return(gtf_gr)
-}
-
-#' @name get_genes_shortcut
-#' @title Shortcut to get only protein coding genes from GTF file and convert to GenomicRanges object
-#'
-#' @description
-#' Read in a GTF file, subset to protein coding genes, and convert it to a GenomicRanges object with refactored seq details.
-#' The GTF file can be either zipped or unzipped.
-#'
-#' @param gtf_file_path Path to GTF file
-#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
-#'
-#' @returns GenomicRanges object with GTF columns and updated seqinfo, seqnames, seqlengths, seqlevels
-#' @export
-#' @keywords reader
-get_genes_shortcut <- function(gtf_file_path, seq_lengths = gUtils::hg_seqlengths()) {
-
-  gtf_gr <- read_gtf_file(gtf_file_path = gtf_file_path, seq_lengths = seq_lengths)
-
-  # Subset to protein coding biotype and non-NA gene symbols
-  genes <- gtf_gr %Q% (gene_biotype == "protein_coding" & type == "gene" & !is.na(gene_name))
-  return(genes)
+read_bedpe_file <- function(bedpe_file, 
+                            output_type = c("gi", "dt", "grl"),
+                            keep_metadata = TRUE,
+                            verbose = TRUE) {
+  
+  # Check for Suggests libraries
+  if(!require_namespaces(pkgs = c("plyinteractions","InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg plyinteractions, InteractionSet} required for this workflow function"))
+  }
+  
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
+  # Read file if path provided
+  if(is.character(bedpe_file)) {
+    if(!file.exists(bedpe_file)) {
+      stop("File not found: ", bedpe_file)
+    }
+    if (verbose) {
+      cli::cli_alert_info(sprintf("Reading BEDPE file: %s", basename(bedpe_file)))
+    }
+    
+    bedpe_dt <- data.table::fread(bedpe_file, header = TRUE)
+  } else {
+    bedpe_dt <- data.table::as.data.table(bedpe_file)
+  }
+  
+  # Validate we have data
+  if(nrow(bedpe_dt) == 0) {
+    stop("Input file/data is empty")
+  }
+  
+  # For data.table output, standardize and return early
+  if(output_type == "dt") {
+    # Dynamic column detection for breakpoint 1
+    chr1_col <- grep("^([Cc]hr1)|([Cc]hrom1)|(seqnames1)|#chr1", colnames(bedpe_dt), value = TRUE)[1]
+    start1_col <- grep("^[Ss]tart1", colnames(bedpe_dt), value = TRUE)[1]
+    end1_col <- grep("^[Ee]nd1", colnames(bedpe_dt), value = TRUE)[1]
+    strand1_col <- grep("^[Ss]trand1", colnames(bedpe_dt), value = TRUE)[1]
+    
+    # Dynamic column detection for breakpoint 2
+    chr2_col <- grep("^([Cc]hr2)|([Cc]hrom2)|(seqnames2)", colnames(bedpe_dt), value = TRUE)[1]
+    start2_col <- grep("^[Ss]tart2", colnames(bedpe_dt), value = TRUE)[1]
+    end2_col <- grep("^[Ee]nd2", colnames(bedpe_dt), value = TRUE)[1]
+    strand2_col <- grep("^[Ss]trand2", colnames(bedpe_dt), value = TRUE)[1]
+    
+    # Check required columns
+    missing_cols <- character()
+    if(is.na(chr1_col)) missing_cols <- c(missing_cols, "chr1/chrom1/seqnames1")
+    if(is.na(start1_col)) missing_cols <- c(missing_cols, "start1")
+    if(is.na(end1_col)) missing_cols <- c(missing_cols, "end1")
+    if(is.na(chr2_col)) missing_cols <- c(missing_cols, "chr2/chrom2/seqnames2")
+    if(is.na(start2_col)) missing_cols <- c(missing_cols, "start2")
+    if(is.na(end2_col)) missing_cols <- c(missing_cols, "end2")
+    
+    if(length(missing_cols) > 0) {
+      stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+    }
+    
+    # Standardize column names
+    data.table::setnames(bedpe_dt,
+                         c(chr1_col, start1_col, end1_col, chr2_col, start2_col, end2_col),
+                         c("seqnames1", "start1", "end1", "seqnames2", "start2", "end2"),
+                         skip_absent = TRUE)
+    
+    # Handle strand columns
+    if(!is.na(strand1_col)) {
+      data.table::setnames(bedpe_dt, strand1_col, "strand1", skip_absent = TRUE)
+      bedpe_dt[strand1 == ".", strand1 := "*"]
+    } else if(!"strand1" %in% colnames(bedpe_dt)) {
+      bedpe_dt[, strand1 := "*"]
+    }
+    
+    if(!is.na(strand2_col)) {
+      data.table::setnames(bedpe_dt, strand2_col, "strand2", skip_absent = TRUE)
+      bedpe_dt[strand2 == ".", strand2 := "*"]
+    } else if(!"strand2" %in% colnames(bedpe_dt)) {
+      bedpe_dt[, strand2 := "*"]
+    }
+    
+    # Convert chromosomes to character
+    bedpe_dt[, seqnames1 := as.character(seqnames1)]
+    bedpe_dt[, seqnames2 := as.character(seqnames2)]
+    
+    return(bedpe_dt)
+  }
+  
+  # For GInteractions or GRangesList, first convert to GInteractions
+  gi <- bedpe_to_gi(input_dt = bedpe_dt, 
+                    keep_metadata = keep_metadata)
+  
+  # Return based on output type
+  if(output_type == "gi") {
+    return(gi)
+  } else if(output_type == "grl") {
+    grl <- gi_to_grl(input_gi = gi, keep_metadata = keep_metadata)
+    return(grl)
+  }
 }
 
 #' @name read_maf_file
-#' @title Read MAF file and convert to GenomicRanges object
+#' @title Read MAF file and convert to GenomicRanges or data.table
 #'
 #' @description
 #' Read in a MAF file which contains a number of columns and convert it to a 
-#' GenomicRanges object with refactored seq details. The MAF file can be either 
-#' zipped or unzipped. This function performs validation and filtering to ensure
-#' proper MAF format compliance.
+#' GenomicRanges object or data.table. The MAF file can be either zipped or unzipped. 
+#' This function performs validation and filtering to ensure proper MAF format compliance.
 #' For more specific MAFtools operations, see `maftools::read.maf()`
 #'
-#' @param maf_file_path Path to MAF file (supports .maf, .maf.gz, .maf.txt, .txt)
+#' @param maf_file Path to MAF file (supports .maf, .maf.gz, .maf.txt, .txt)
+#' @param output_type Character string specifying output format: 
+#'   gr="GenomicRanges" (default) or dt="data.table"
 #' @param cpus Number of CPUs for reading data, used by `data.table::fread()`. Default: 2
 #' @param seq_lengths Named vector object used as template for new seq details. 
-#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths
-#' @param remove_filtered Logical, whether to remove variants with FILTER != "PASS". Default: FALSE
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths.
+#'   Only used when output_type = "GenomicRanges"
 #' @param verbose Logical, whether to print progress messages. Default: TRUE
 #'
-#' @returns GenomicRanges object with MAF columns and updated seqinfo, seqnames, 
-#'   seqlengths, seqlevels
+#' @returns GenomicRanges object or data.table with MAF data. If GenomicRanges, 
+#'   includes updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 #' @keywords reader
-read_maf_file <- function(maf_file_path, 
+read_maf_file <- function(maf_file, 
+                          output_type = c("gr", "dt"),
                           cpus = 2, 
                           seq_lengths = gUtils::hg_seqlengths(),
-                          remove_filtered = FALSE,
                           verbose = TRUE) {
   
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
   # Input validation
-  if (!file.exists(maf_file_path)) {
-    stop(cli::cli_alert_danger(sprintf("MAF file not found: %s", maf_file_path)))
+  if (!file.exists(maf_file)) {
+    stop(cli::cli_alert_danger(sprintf("MAF file not found: %s", maf_file)))
   }
   
   if (verbose) {
-    cli::cli_alert_info(sprintf("Reading MAF file: %s", basename(maf_file_path)))
+    cli::cli_alert_info(sprintf("Reading MAF file: %s", basename(maf_file)))
   }
   
   # Set available threads
@@ -3376,7 +4068,7 @@ read_maf_file <- function(maf_file_path,
   # Handle comments (lines starting with #)
   maf_dt <- tryCatch({
     data.table::fread(
-      input = maf_file_path,
+      input = maf_file,
       sep = "\t",
       header = TRUE,
       stringsAsFactors = FALSE,
@@ -3410,17 +4102,6 @@ read_maf_file <- function(maf_file_path,
     stop(cli::cli_alert_danger("VARIANT_CLASS column not found - stopping now as filtering functions will not work, check input"))
   }
   
-  # Optionally remove filtered variants
-  if (remove_filtered && "FILTER" %in% names(maf_dt)) {
-    n_before <- nrow(maf_dt)
-    maf_dt <- maf_dt[FILTER == "PASS" | FILTER == "." | is.na(FILTER)]
-    n_after <- nrow(maf_dt)
-    if (verbose && n_after < n_before) {
-      cli::cli_alert_info(sprintf("Removed %d filtered variants (kept %d PASS variants)", 
-                                  n_before - n_after, n_after))
-    }
-  }
-  
   # Remove completely empty rows if present
   n_before <- nrow(maf_dt)
   maf_dt <- maf_dt[!is.na(Chromosome) & !is.na(Start_Position)]
@@ -3428,10 +4109,16 @@ read_maf_file <- function(maf_file_path,
     cli::cli_alert_info(sprintf("Removed %d rows with missing position data", n_before - nrow(maf_dt)))
   }
   
-  # Standardize chromosome names (remove "chr" prefix if present for consistency)
-  # gr_refactor_seqs will handle adding it back if needed based on seq_lengths
-  if (verbose && any(grepl("^chr", maf_dt$Chromosome))) {
-    cli::cli_alert_info("Chromosome names contain 'chr' prefix - will be standardized")
+  # Return based on output type
+  if (output_type == "dt") {
+    if (verbose) {
+      cli::cli_alert_success(sprintf("Returning data.table with %d variants", nrow(maf_dt)))
+    }
+    # To ensure GRCh38 conforming names, check for 'chr' notation and add if needed
+    if (!any(grepl("^chr", maf_dt$Chromosome))) {
+      maf_dt$Chromosome <- paste0("chr", maf_dt$Chromosome)
+    }
+    return(maf_dt)
   }
   
   # Convert to GRanges
@@ -3446,59 +4133,37 @@ read_maf_file <- function(maf_file_path,
                                        e$message)))
   })
   
-  # Summary statistics
-  if (verbose) {
-    cli::cli_alert_success(sprintf("Successfully created GRanges with %d variants across %d chromosome(s)", 
-                                   length(maf_gr), 
-                                   length(GenomeInfoDb::seqlevelsInUse(maf_gr))))
-    
-    # Variant class summary if available
-    if ("VARIANT_CLASS" %in% names(S4Vectors::mcols(maf_gr))) {
-      var_class <- table(S4Vectors::mcols(maf_gr)$VARIANT_CLASS)
-      cli::cli_alert_info("Variant class breakdown:")
-      for (i in seq_along(var_class)) {
-        cli::cli_alert(sprintf("  %s: %d", names(var_class)[i], var_class[i]))
-      }
-    }
-    
-    # Variant classification summary if available
-    if ("Variant_Classification" %in% names(S4Vectors::mcols(maf_gr))) {
-      top_classes <- head(sort(table(S4Vectors::mcols(maf_gr)$Variant_Classification), decreasing = TRUE), 5)
-      cli::cli_alert_info("Top 5 variant classifications:")
-      for (i in seq_along(top_classes)) {
-        cli::cli_alert(sprintf("  %s: %d", names(top_classes)[i], top_classes[i]))
-      }
-    }
-  }
-  
   return(maf_gr)
 }
 
 #' @name read_bed_file
-#' @title Read in a BED file, with or without header, and convert to GenomicRanges object
+#' @title Read in a BED file and convert to GenomicRanges or data.table
 #'
 #' @description
-#' Read in a BED file and convert it to a GenomicRanges object with refactored seq details.
-#' Expects the first 3 columns as chromosome, start, end; However column names are not necessary.
-#' The BED file can be either zipped or unzipped. BED files use 0-based coordinates which are
-#' automatically converted to 1-based for GenomicRanges.
+#' Read in a BED file and convert it to a GenomicRanges object or data.table with 
+#' refactored seq details. Expects the first 3 columns as chromosome, start, end; 
+#' However column names are not necessary. The BED file can be either zipped or unzipped.
 #'
-#' @param bed_file_path Path to BED file (supports .bed, .bed.gz)
+#' @param bed_file Path to BED file (supports .bed, .bed.gz)
+#' @param output_type Character string specifying output format: 
+#'   gr="GenomicRanges" (default) or dt="data.table"
 #' @param has_header Logical, does BED file have header line. Default: FALSE
 #' @param additional_col_names Character vector of names for additional columns in BED file, 
 #'   beyond first three. Default: NULL
 #' @param cpus Integer, number of CPUs for reading data, used by `data.table::fread()`. Default: 1
 #' @param seq_lengths Named vector object used as template for new seq details. 
-#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths.
+#'   Only used when output_type = "GenomicRanges"
 #' @param allow_nonstandard_chr Logical, whether to allow non-standard chromosomes 
 #'   (decoys, HLA, alt contigs). Default: FALSE
 #' @param verbose Logical, whether to print progress messages. Default: TRUE
 #'
-#' @returns GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames, 
-#'   seqlengths, seqlevels
+#' @returns GenomicRanges object or data.table with BED data. If GenomicRanges, 
+#'   includes updated seqinfo, seqnames, seqlengths, seqlevels
 #' @export
 #' @keywords reader
-read_bed_file <- function(bed_file_path, 
+read_bed_file <- function(bed_file, 
+                          output_type = c("gr", "dt"),
                           has_header = FALSE, 
                           additional_col_names = NULL, 
                           cpus = 1, 
@@ -3506,13 +4171,16 @@ read_bed_file <- function(bed_file_path,
                           allow_nonstandard_chr = FALSE,
                           verbose = TRUE) {
   
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
   # Input validation
-  if (!file.exists(bed_file_path)) {
-    stop(sprintf("BED file not found: %s", bed_file_path))
+  if (!file.exists(bed_file)) {
+    stop(sprintf("BED file not found: %s", bed_file))
   }
   
   if (verbose) {
-    cli::cli_alert_info(sprintf("Reading BED file: %s", basename(bed_file_path)))
+    cli::cli_alert_info(sprintf("Reading BED file: %s", basename(bed_file)))
   }
   
   # Set available threads
@@ -3521,7 +4189,7 @@ read_bed_file <- function(bed_file_path,
   # Read BED file
   bed_dt <- tryCatch({
     data.table::fread(
-      input = bed_file_path,
+      input = bed_file,
       sep = "\t",
       header = has_header,
       stringsAsFactors = FALSE,
@@ -3612,7 +4280,7 @@ read_bed_file <- function(bed_file_path,
     # Handle based on user preference
     if (!allow_nonstandard_chr) {
       cli::cli_alert_info(sprintf("Removing %d records from non-standard chromosomes", 
-                                  length(nonstandard_chr)))
+                                  sum(bed_dt$chr %in% nonstandard_chr)))
       cli::cli_alert_info("Set allow_nonstandard_chr = TRUE to retain these records")
       
       # Filter to standard chromosomes only
@@ -3620,7 +4288,7 @@ read_bed_file <- function(bed_file_path,
       
     } else {
       cli::cli_alert_success(sprintf("Retaining %d records from non-standard chromosomes", 
-                                     length(nonstandard_chr)))
+                                     sum(bed_dt$chr %in% nonstandard_chr)))
     }
   }
   
@@ -3639,6 +4307,21 @@ read_bed_file <- function(bed_file_path,
     bed_dt$chr <- dplyr::recode(bed_dt$chr, `24` = "Y", .default = as.character(bed_dt$chr))
   }
   
+  # Summary for both output types
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Processed %d records across %d chromosomes", 
+                                   nrow(bed_dt), 
+                                   length(unique(bed_dt$chr))))
+  }
+  
+  # Return based on output type
+  if (output_type == "dt") {
+    if (verbose) {
+      cli::cli_alert_success(sprintf("Returning data.table with %d records", nrow(bed_dt)))
+    }
+    return(bed_dt)
+  }
+  
   # Convert to GRanges
   if (verbose) {
     cli::cli_alert_info("Converting to GenomicRanges object ...")
@@ -3651,314 +4334,446 @@ read_bed_file <- function(bed_file_path,
                  e$message))
   })
   
-  # Summary
-  if (verbose) {
-    cli::cli_alert_success(sprintf("Successfully created GRanges with %d ranges across %d chromosomes", 
-                                   length(bed_gr), 
-                                   length(seqlevelsInUse(bed_gr))))
-  }
-  
   return(bed_gr)
 }
 
 #' @name read_vcf_file
-#' @title Read in a VCF file and convert to GenomicRanges object
+#' @title Read in a VCF file and convert to GenomicRanges or data.table
 #'
 #' @description
-#' Read in a VCF file and convert it to a GenomicRanges object with refactored seq details.
-#' Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
-#' Also supports conversion of germline SNP/InDel VCF from DeepVariant.
+#' Read in a VCF file and convert it to a GenomicRanges object or data.table with 
+#' preserved INFO and FORMAT metadata. The function extracts all VCF fields including 
+#' CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, and FORMAT columns.
 #' The VCF file can be either zipped or unzipped.
 #'
-#' @param vcf_file_path Path to VCF file
-#' @param tumor_sample Name of tumor sample as reported in VCF
-#' @param normal_sample Name of normal sample as reported in VCF
-#' @param caller Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman, deepvariant
-#' @param mut_type Type of mutations within VCF, supported: snv, indel, snp
-#' @param seq_lengths Named vector object used as the template for new seq details, see `gUtils::hg_seqlengths()` for example
+#' @param vcf_file Path to VCF file (supports .vcf, .vcf.gz, .vcf.bgz)
+#' @param output_type Character string specifying output format: 
+#'   gr="GenomicRanges" (default) or dt="data.table"
+#' @param sample_names Character vector of sample names to extract from FORMAT fields.
+#'   If NULL, all samples are extracted. Default: NULL
+#' @param parse_info Logical, whether to parse INFO field into separate columns. Default: TRUE
+#' @param parse_format Logical, whether to parse FORMAT fields for each sample. Default: TRUE
+#' @param cpus Integer, number of CPUs for parallel processing. Default: 1
+#' @param seq_lengths Named vector object used as template for new seq details. 
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths.
+#'   Only used when output_type = "GenomicRanges"
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
 #'
-#' @returns GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+#' @returns GenomicRanges object or data.table with VCF data including INFO and FORMAT fields
 #' @export
 #' @keywords reader
-read_vcf_file <- function(vcf_file_path, tumor_sample = NULL, normal_sample = NULL,
-                          caller = NULL, mut_type = NULL, seq_lengths = gUtils::hg_seqlengths()) {
-
-  # Read in VCF into VA VCF obj
-  vcf_va <- VariantAnnotation::readVcf(file = vcf_file_path)
-
-  # Build the GRanges obj from VCF obj
-  # Start by setting the GRanges base and exclude the paramRangesID column
-  vcf_gr_base <- vcf_va@rowRanges[,-1]
-
-  # remove names of range rows
-  names(vcf_gr_base) <- NULL
-
-  # Have user provide tumor_sample and normal_sample
-  # Create metadata column with patient and sample name
-  vcf_query_ids <- vcf_va@metadata$header@samples
-
-  # Edge case: SvABA uses BAM name for SAMPLE columns in VCF
-  if(caller %in% c("svaba")) {
-    vcf_query_ids <- stringr::str_remove(string = vcf_query_ids, pattern = "\\..+\\.bam$")
+read_vcf_file <- function(vcf_file, 
+                          output_type = c("gr", "dt"),
+                          sample_names = NULL,
+                          parse_info = TRUE,
+                          parse_format = TRUE,
+                          cpus = 1,
+                          seq_lengths = gUtils::hg_seqlengths(),
+                          verbose = TRUE) {
+  
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
+  # Input validation
+  if (!file.exists(vcf_file)) {
+    stop(sprintf("VCF file not found: %s", vcf_file))
   }
-
-  # Add column for name of caller
-  vcf_gr_base$CALLER <- caller
-
-  # Sanity Check: Do VCF query IDs match user-provided tumor/normal parameters?
-  # Check if germline first then somatic
-  # DeepVariant only uses normal sample for germline
-  if(caller == "deepvariant" & is.null(tumor_sample) & !is.null(normal_sample)) {
-    vcf_normal_sample_index <- 1
-
-    vcf_gr_base$PATIENT <- normal_sample
-    vcf_gr_base$NORMAL <- normal_sample
-
-  } else if(caller %in% c("mutect", "svaba") & tumor_sample %in% vcf_query_ids & normal_sample %in% vcf_query_ids) {
-    vcf_tumor_sample_index <- which(tumor_sample == vcf_query_ids)
-    vcf_normal_sample_index <- which(normal_sample == vcf_query_ids)
-
-    vcf_gr_base$TUMOR <- vcf_query_ids[vcf_tumor_sample_index]
-    vcf_gr_base$NORMAL <- vcf_query_ids[vcf_normal_sample_index]
-
-    vcf_gr_base$SAMPLE <- vcf_query_ids[vcf_tumor_sample_index]
-    vcf_gr_base$PATIENT <- vcf_query_ids[vcf_normal_sample_index]
-
-    # Strelka, VarScan, CaVEMan uses generic NORMAL and TUMOR/TUMOUR as name of SAMPLE columns instead of sample ID/BAM basename
-  } else if(caller %in% c("strelka", "varscan", "caveman") & !is.null(tumor_sample) & !is.null(normal_sample)) {
-
-    vcf_tumor_sample_index <- which(vcf_query_ids %in% c("TUMOR", "TUMOUR"))
-    vcf_normal_sample_index <- which(vcf_query_ids == "NORMAL")
-
-    vcf_gr_base$SAMPLE <- tumor_sample
-    vcf_gr_base$TUMOR <- tumor_sample
-
-    vcf_gr_base$PATIENT <- normal_sample
-    vcf_gr_base$NORMAL <- normal_sample
-
+  
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Reading VCF file: %s", basename(vcf_file)))
+  }
+  
+  # Set available threads
+  doParallel::registerDoParallel(cores = cpus)
+  
+  # Read VCF using VariantAnnotation
+  vcf_obj <- tryCatch({
+    VariantAnnotation::readVcf(file = vcf_file)
+  }, error = function(e) {
+    stop(sprintf("Error reading VCF file: %s", e$message))
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Read %d variants from VCF", nrow(vcf_obj)))
+  }
+  
+  # Extract basic fixed fields
+  vcf_dt <- data.table::data.table(
+    chr = as.character(seqnames(vcf_obj)),
+    start = start(vcf_obj),
+    end = end(vcf_obj)
+  )
+  
+  # Add ID if present
+  if (!all(is.na(names(vcf_obj)))) {
+    vcf_dt$ID <- names(vcf_obj)
+  }
+  
+  # Add REF and ALT
+  vcf_dt$REF <- as.character(VariantAnnotation::ref(vcf_obj))
+  
+  # Handle ALT - can be complex (multiple alleles)
+  alt_alleles <- VariantAnnotation::alt(vcf_obj)
+  if (inherits(alt_alleles, "DNAStringSetList")) {
+    vcf_dt$ALT <- sapply(alt_alleles, function(x) {
+      if (length(x) == 0) return(NA_character_)
+      paste(as.character(x), collapse = ",")
+    })
   } else {
-    # Problem if there is no proper combo of samples and caller
-    stop(message = "\nTumor/Normal sample names provided NOT FOUND in VCF")
+    vcf_dt$ALT <- as.character(alt_alleles)
   }
-
-  # Now form the final GRanges obj by grabbing the REF, ALT, QUAL, FILTER, and all INFO columns
-  vcf_gr <- vcf_gr_base
-  S4Vectors::mcols(vcf_gr) <- c(S4Vectors::mcols(vcf_gr_base), vcf_va@fixed, vcf_va@info)
-
-  # Convert the REF/ALT field from DNA Biostring to character
-  # ALT
-  if(!is.character(vcf_gr$ALT)) {
-    vcf_gr$ALT <- as.character(unlist(vcf_va@fixed$ALT))  # Needed for SNVs primarily but not exclusively
+  
+  # Add QUAL
+  vcf_dt$QUAL <- VariantAnnotation::qual(vcf_obj)
+  
+  # Add FILTER
+  filter_vals <- VariantAnnotation::filt(vcf_obj)
+  if (inherits(filter_vals, "character")) {
+    vcf_dt$FILTER <- filter_vals
+  } else {
+    vcf_dt$FILTER <- sapply(filter_vals, function(x) {
+      if (length(x) == 0) return("PASS")
+      paste(x, collapse = ";")
+    })
   }
-  # REF
-  if(!is.character(vcf_gr$REF)) {
-    vcf_gr$REF <- unlist(stringr::str_split(string = Biostrings::toString(vcf_va@fixed$REF), pattern = ", "))  # Needed for InDels
+  
+  # Parse INFO fields
+  if (parse_info) {
+    if (verbose) {
+      cli::cli_alert_info("Parsing INFO fields ...")
+    }
+    
+    info_data <- VariantAnnotation::info(vcf_obj)
+    
+    if (ncol(info_data) > 0) {
+      # Convert INFO DataFrame to data.table
+      info_dt <- data.table::as.data.table(info_data)
+      
+      # Handle complex INFO fields (lists/arrays)
+      for (col in names(info_dt)) {
+        if (is.list(info_dt[[col]])) {
+          # Convert lists to comma-separated strings
+          info_dt[[col]] <- sapply(info_dt[[col]], function(x) {
+            if (length(x) == 0 || all(is.na(x))) return(NA_character_)
+            paste(as.character(x), collapse = ",")
+          })
+        }
+      }
+      
+      # Add INFO columns with INFO_ prefix to avoid name conflicts
+      data.table::setnames(info_dt, names(info_dt), paste0("INFO_", names(info_dt)))
+      vcf_dt <- cbind(vcf_dt, info_dt)
+      
+      if (verbose) {
+        cli::cli_alert_success(sprintf("Parsed %d INFO fields", ncol(info_data)))
+      }
+    }
   }
-
-  # Add tumor and normal specific DP field
-  if(caller %in% c("mutect", "varscan", "strelka", "caveman")) {
-    vcf_gr$DP_TUMOR <- vcf_va@assays@data@listData$DP[,vcf_tumor_sample_index]
-    vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]
-
-  } else if(caller == "deepvariant") {
-    vcf_gr$DP_NORMAL <- vcf_va@assays@data@listData$DP[,vcf_normal_sample_index]
+  
+  # Parse FORMAT fields
+  geno_data <- VariantAnnotation::geno(vcf_obj)
+  has_format_fields <- length(geno_data) > 0
+  
+  if (parse_format && has_format_fields) {
+    if (verbose) {
+      cli::cli_alert_info("Parsing FORMAT fields ...")
+    }
+    
+    # Get sample names from VCF
+    # Use the first FORMAT field to get sample names
+    vcf_samples <- colnames(geno_data[[1]])
+    
+    # Filter samples if specified
+    if (!is.null(sample_names)) {
+      valid_samples <- intersect(sample_names, vcf_samples)
+      if (length(valid_samples) == 0) {
+        warning("None of the specified sample_names found in VCF")
+        valid_samples <- vcf_samples
+      } else if (length(valid_samples) < length(sample_names)) {
+        missing <- setdiff(sample_names, vcf_samples)
+        warning(sprintf("Sample(s) not found in VCF: %s", paste(missing, collapse = ", ")))
+      }
+    } else {
+      valid_samples <- vcf_samples
+    }
+    
+    # Extract FORMAT fields for each sample
+    format_fields <- names(geno_data)
+    
+    for (sample in valid_samples) {
+      for (field in format_fields) {
+        format_data <- geno_data[[field]]
+        
+        # Get data for this sample
+        if (is.matrix(format_data)) {
+          sample_col <- which(colnames(format_data) == sample)
+          if (length(sample_col) == 0) next
+          
+          sample_data <- format_data[, sample_col]
+        } else if (inherits(format_data, "DataFrame") || is.data.frame(format_data)) {
+          sample_data <- format_data[[sample]]
+        } else {
+          next
+        }
+        
+        # Handle different data types
+        if (is.list(sample_data)) {
+          # Convert lists to comma-separated strings or extract values
+          sample_data <- sapply(sample_data, function(x) {
+            if (length(x) == 0 || all(is.na(x))) return(NA_character_)
+            if (length(x) == 1) return(as.character(x))
+            paste(as.character(x), collapse = ",")
+          })
+        } else if (is.matrix(sample_data)) {
+          # Handle matrix format (e.g., AD with REF,ALT counts)
+          sample_data <- apply(sample_data, 1, function(x) {
+            paste(x, collapse = ",")
+          })
+        }
+        
+        # Add column with sample_field naming
+        col_name <- paste0(field, "_", sample)
+        vcf_dt[[col_name]] <- sample_data
+      }
+    }
+    
+    if (verbose) {
+      cli::cli_alert_success(sprintf("Parsed FORMAT fields for %d sample(s)", length(valid_samples)))
+    }
+  } else if (parse_format && !has_format_fields) {
+    if (verbose) {
+      cli::cli_alert_info("No FORMAT fields found in VCF")
+    }
   }
-
-  if(caller == "mutect") {
-    # FORMAT fields are stored in list of lists, need to properly extract tumor AD, AF and normal AD
-    # When unlisting the AD/AF fields, the allele depth is split into REF and ALT columns
-    # so easily grab with even (ALT) and odd (REF) vector index
-    vcf_tumor_allele_depth <- unlist(vcf_va@assays@data@listData$AD[,vcf_tumor_sample_index])
-    odd_even_index <- seq_len(length(vcf_tumor_allele_depth)) %% 2
-
-    vcf_gr$AD_REF_TUMOR <- vcf_tumor_allele_depth[odd_even_index == 1]
-    vcf_gr$AD_ALT_TUMOR <- vcf_tumor_allele_depth[odd_even_index == 0]
-
-    vcf_gr$AF_TUMOR <- unlist(vcf_va@assays@data@listData$AF[,vcf_tumor_sample_index])
-    vcf_gr$GT_TUMOR <- vcf_va@assays@data@listData$GT[,vcf_tumor_sample_index]
-
-    vcf_normal_allele_depth <- unlist(vcf_va@assays@data@listData$AD[,vcf_normal_sample_index])
-    vcf_gr$AD_REF_NORMAL <- vcf_normal_allele_depth[odd_even_index == 1]
-    vcf_gr$AD_ALT_NORMAL <- vcf_normal_allele_depth[odd_even_index == 0]
-
-    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,vcf_normal_sample_index]
-
-    # Some INFO metrics need to be reformatted from complex to simple (i.e. list to vector)
-    vcf_gr$AS_FilterStatus <- unlist(vcf_gr$AS_FilterStatus)
-    vcf_gr$AS_UNIQ_ALT_READ_COUNT <- unlist(vcf_gr$AS_UNIQ_ALT_READ_COUNT)
-
-    MBQ_1 <- unlist(vcf_gr$MBQ)[odd_even_index == 1]
-    MBQ_2 <- unlist(vcf_gr$MBQ)[odd_even_index == 0]
-    vcf_gr$MBQ <- stringr::str_c(MBQ_1, MBQ_2, sep = ",")
-
-    MFRL_1 <- unlist(vcf_gr$MFRL)[odd_even_index == 1]
-    MFRL_2 <- unlist(vcf_gr$MFRL)[odd_even_index == 0]
-    vcf_gr$MFRL <- stringr::str_c(MFRL_1, MFRL_2, sep = ",")
-
-    MMQ_1 <- unlist(vcf_gr$MMQ)[odd_even_index == 1]
-    MMQ_2 <- unlist(vcf_gr$MMQ)[odd_even_index == 0]
-    vcf_gr$MMQ <- stringr::str_c(MMQ_1, MMQ_2, sep = ",")
-
-    vcf_gr$MPOS <- unlist(vcf_gr$MPOS)
-    vcf_gr$NALOD <- unlist(vcf_gr$NALOD)
-    vcf_gr$NLOD <- unlist(vcf_gr$NLOD)
-    vcf_gr$POPAF <- unlist(vcf_gr$POPAF)
-
-    RPA_1 <- unlist(vcf_gr$RPA)[odd_even_index == 1]
-    RPA_2 <- unlist(vcf_gr$RPA)[odd_even_index == 0]
-    vcf_gr$RPA <- stringr::str_c(RPA_1, RPA_2, sep = ",")
-
-    vcf_gr$TLOD <- unlist(vcf_gr$TLOD)
-
-  } else if(caller == "strelka" & mut_type == "snv") {
-    # Strelka VCF breaks down reads by nucleotide, then by tier
-    vcf_gr$AU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_tumor_sample_index]
-    vcf_gr$AU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_tumor_sample_index + 2]
-
-    vcf_gr$CU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_tumor_sample_index]
-    vcf_gr$CU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_tumor_sample_index + 2]
-
-    vcf_gr$GU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_tumor_sample_index]
-    vcf_gr$GU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_tumor_sample_index + 2]
-
-    vcf_gr$TU_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_tumor_sample_index]
-    vcf_gr$TU_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_tumor_sample_index + 2]
-
-    vcf_gr$AU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_normal_sample_index]
-    vcf_gr$AU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AU)[,vcf_normal_sample_index + 2]
-
-    vcf_gr$CU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_normal_sample_index]
-    vcf_gr$CU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$CU)[,vcf_normal_sample_index + 2]
-
-    vcf_gr$GU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_normal_sample_index]
-    vcf_gr$GU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GU)[,vcf_normal_sample_index + 2]
-
-    vcf_gr$TU_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_normal_sample_index]
-    vcf_gr$TU_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TU)[,vcf_normal_sample_index + 2]
-
-  } else if(caller == "strelka" & mut_type == "indel") {
-    # Strelka has different FORMAT fields for indel VCF, most relevant is TIR (Reads strongly supporting indel allele for tiers 1,2)
-    vcf_gr$TIR_TIER1_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_tumor_sample_index]
-    vcf_gr$TIR_TIER2_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_tumor_sample_index + 2]
-
-    vcf_gr$TIR_TIER1_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_normal_sample_index]
-    vcf_gr$TIR_TIER2_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$TIR)[,vcf_normal_sample_index + 2]
-
-  } else if(caller == "varscan") {
-    # Varscan breaks down the read depth into 2 separate fields as ref read depth and variant read depth
-    vcf_gr$RD_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RD)[,vcf_tumor_sample_index]
-    vcf_gr$AD_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$AD)[,vcf_tumor_sample_index]
-
-    vcf_gr$FREQ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FREQ)[,vcf_tumor_sample_index]
-    vcf_gr$GT_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_tumor_sample_index]
-
-    vcf_gr$RD_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RD)[,vcf_normal_sample_index]
-    vcf_gr$AD_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$AD)[,vcf_normal_sample_index]
-
-    vcf_gr$FREQ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FREQ)[,vcf_normal_sample_index]
-    vcf_gr$GT_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_normal_sample_index]
-
-  } else if(caller == "svaba") {
-    # SvABA also provides the SR FORMAT field for number of spanning reads for the variants
-    vcf_gr$AD_TUMOR <- vcf_va@assays@data@listData$AD[,vcf_tumor_sample_index]
-    vcf_gr$SR_TUMOR <- vcf_va@assays@data@listData$SR[,vcf_tumor_sample_index]
-    vcf_gr$GT_TUMOR <- vcf_va@assays@data@listData$GT[,vcf_tumor_sample_index]
-
-    vcf_gr$AD_NORMAL <- vcf_va@assays@data@listData$AD[,vcf_normal_sample_index]
-    vcf_gr$SR_NORMAL <- vcf_va@assays@data@listData$SR[,vcf_normal_sample_index]
-    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,vcf_normal_sample_index]
-
-    # Some INFO metrics are complex format but empty, remove them here
-    vcf_gr <- vcf_gr[,!colnames(S4Vectors::mcols(vcf_gr)) %in% c("READNAMES", "BX")]
-
-  } else if(caller == "caveman") {
-    # CaVEMan provides a format field for each nucleotide type per forward and reverse strand reads at the variant
-    # The DS metric is complex format but empty/redundant, remove them here
-    vcf_gr <- vcf_gr[,!colnames(S4Vectors::mcols(vcf_gr)) == "DS"]
-
-    vcf_gr$FAZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FAZ)[,vcf_tumor_sample_index]
-    vcf_gr$FCZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FCZ)[,vcf_tumor_sample_index]
-    vcf_gr$FGZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FGZ)[,vcf_tumor_sample_index]
-    vcf_gr$FTZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$FTZ)[,vcf_tumor_sample_index]
-    vcf_gr$RAZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RAZ)[,vcf_tumor_sample_index]
-    vcf_gr$RCZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RCZ)[,vcf_tumor_sample_index]
-    vcf_gr$RGZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RGZ)[,vcf_tumor_sample_index]
-    vcf_gr$RTZ_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$RTZ)[,vcf_tumor_sample_index]
-    vcf_gr$PM_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$PM)[,vcf_tumor_sample_index]
-    vcf_gr$GT_TUMOR <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_tumor_sample_index]
-
-    vcf_gr$FAZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FAZ)[,vcf_normal_sample_index]
-    vcf_gr$FCZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FCZ)[,vcf_normal_sample_index]
-    vcf_gr$FGZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FGZ)[,vcf_normal_sample_index]
-    vcf_gr$FTZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$FTZ)[,vcf_normal_sample_index]
-    vcf_gr$RAZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RAZ)[,vcf_normal_sample_index]
-    vcf_gr$RCZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RCZ)[,vcf_normal_sample_index]
-    vcf_gr$RGZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RGZ)[,vcf_normal_sample_index]
-    vcf_gr$RTZ_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$RTZ)[,vcf_normal_sample_index]
-    vcf_gr$PM_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$PM)[,vcf_normal_sample_index]
-    vcf_gr$GT_NORMAL <- as.data.frame(VariantAnnotation::geno(vcf_va)$GT)[,vcf_normal_sample_index]
-
-  } else if(caller == "deepvariant") {
-
-    vcf_gr$REF_AD_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$AD[,])[1,]))
-    vcf_gr$ALT_AD_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$AD[,])[2,]))
-    vcf_gr$VAF_NORMAL <- as.vector(unlist(as.data.frame(vcf_va@assays@data@listData$VAF[,])[1,]))
-    vcf_gr$GT_NORMAL <- vcf_va@assays@data@listData$GT[,]
-
-    # Remove some populated columns
-    GenomicRanges::mcols(vcf_gr) <- GenomicRanges::mcols(vcf_gr)[,-c(8:12)]
+  
+  # Return based on output type
+  if (output_type == "dt") {
+    return(vcf_dt)
   }
-
-  # Sort out seqinfo/levels/lengths mess
-  vcf_gr <- gr_refactor_seqs(input_gr = vcf_gr, new_levels = seq_lengths)
+  
+  # Convert to GRanges
+  if (verbose) {
+    cli::cli_alert_info("Converting to GenomicRanges object ...")
+  }
+  
+  vcf_gr <- tryCatch({
+    dt_to_gr(vcf_dt)
+  }, error = function(e) {
+    stop(sprintf("Error converting to GRanges: %s\nCheck that dt_to_gr() is available", 
+                 e$message))
+  })
+  
   return(vcf_gr)
 }
 
+#' @name read_gtf_file
+#' @title Read in a GTF file and convert to GenomicRanges or data.table
+#'
+#' @description
+#' Read in a GTF file, such as one from Ensembl, and convert it to a GenomicRanges object 
+#' or data.table with refactored seq details. The GTF file can be either zipped or unzipped.
+#' Supports filtering by feature type and additional GTF-specific processing.
+#'
+#' @param gtf_file Path to GTF file (supports .gtf, .gtf.gz)
+#' @param output_type Character string specifying output format: 
+#'   gr="GenomicRanges" (default) or dt="data.table"
+#' @param feature_type Character vector of feature types to retain (e.g., "gene", "transcript", 
+#'   "exon", "CDS"). If NULL, all features are retained. Default: NULL
+#' @param gene_biotype Character vector of gene biotypes to retain (e.g., "protein_coding", 
+#'   "lncRNA"). If NULL, all biotypes are retained. Default: NULL
+#' @param seq_lengths Named vector object used as template for new seq details. 
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths.
+#'   Only used when output_type = "GenomicRanges"
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
+#'
+#' @returns GenomicRanges object or data.table with GTF data and updated seqinfo
+#' @export
+#' @keywords reader
+read_gtf_file <- function(gtf_file, 
+                          output_type = c("gr", "dt"),
+                          feature_type = NULL,
+                          gene_biotype = NULL,
+                          seq_lengths = gUtils::hg_seqlengths(),
+                          verbose = TRUE) {
+  
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
+  # Input validation
+  if (!file.exists(gtf_file)) {
+    stop(sprintf("GTF file not found: %s", gtf_file))
+  }
+  
+  if (verbose) {
+    cli::cli_alert_info(sprintf("Reading GTF file: %s", basename(gtf_file)))
+  }
+  
+  # Read GTF using rtracklayer
+  gtf_gr <- tryCatch({
+    rtracklayer::import(gtf_file)
+  }, error = function(e) {
+    stop(sprintf("Error reading GTF file: %s", e$message))
+  })
+  
+  if (verbose) {
+    cli::cli_alert_success(sprintf("Read %d features from GTF", length(gtf_gr)))
+  }
+  
+  # Filter by feature type if specified
+  if (!is.null(feature_type)) {
+    if ("type" %in% names(S4Vectors::mcols(gtf_gr))) {
+      gtf_gr <- gtf_gr[S4Vectors::mcols(gtf_gr)$type %in% feature_type]
+    } else {
+      warning("Column 'type' not found in GTF - skipping feature_type filtering")
+    }
+  }
+  
+  # Filter by gene biotype if specified
+  if (!is.null(gene_biotype)) {
+    # Check for different biotype column names (depends on GTF source)
+    biotype_col <- NULL
+    possible_cols <- c("gene_biotype", "gene_type", "transcript_biotype", "transcript_type")
+    
+    for (col in possible_cols) {
+      if (col %in% names(S4Vectors::mcols(gtf_gr))) {
+        biotype_col <- col
+        break
+      }
+    }
+    
+    if (!is.null(biotype_col)) {
+      gtf_gr <- gtf_gr[S4Vectors::mcols(gtf_gr)[[biotype_col]] %in% gene_biotype]
+    } else {
+      warning("No biotype column found in GTF - skipping gene_biotype filtering")
+    }
+  }
+  
+  # Return based on output type
+  if (output_type == "dt") {
+    if (verbose) {
+      cli::cli_alert_info("Converting to data.table ...")
+    }
+    
+    gtf_dt <- tryCatch({
+      gUtils::gr2dt(gtf_gr)
+    }, error = function(e) {
+      # Fallback conversion if gr_to_dt doesn't exist
+      gtf_dt <- data.table::data.table(
+        chr = as.character(seqnames(gtf_gr)),
+        start = GenomicRanges::start(gtf_gr),
+        end = end(gtf_gr),
+        strand = as.character(strand(gtf_gr))
+      )
+      
+      # Add all metadata columns
+      mcols_df <- as.data.frame(mcols(gtf_gr))
+      gtf_dt <- cbind(gtf_dt, mcols_df)
+      
+      gtf_dt
+    })
+    
+    if (verbose) {
+      cli::cli_alert_success(sprintf("Returning data.table with %d features", nrow(gtf_dt)))
+    }
+    
+    return(gtf_dt)
+  }
+  
+  # Refactor seqinfo for GenomicRanges output
+  if (verbose) {
+    cli::cli_alert_info("Refactoring seqinfo ...")
+  }
+  
+  gtf_gr <- gr_refactor_seqs(input_gr = gtf_gr, new_levels = seq_lengths)
+  
+  return(gtf_gr)
+}
 
-
-
-
-
-
-
-
+#' @name get_protein_coding_genes
+#' @title Extract protein-coding genes from GTF file
+#'
+#' @description
+#' Convenience function to extract protein-coding gene features from a GTF file.
+#' Returns a GenomicRanges or data.table object with only protein-coding genes.
+#' This is a wrapper around read_gtf_file with preset filters.
+#'
+#' @param gtf_file Path to GTF file (supports .gtf, .gtf.gz)
+#' @param output_type Character string specifying output format: 
+#'   gr="GenomicRanges" (default) or dt="data.table"
+#' @param seq_lengths Named vector object used as template for new seq details. 
+#'   See `gUtils::hg_seqlengths()` for example. Default: hg38 seqlengths.
+#'   Only used when output_type = "GenomicRanges"
+#' @param verbose Logical, whether to print progress messages. Default: TRUE
+#'
+#' @returns GenomicRanges object or data.table with protein-coding genes only
+#' @export
+#' @keywords reader
+get_protein_coding_genes <- function(gtf_file,
+                                     output_type = c("gr", "dt"),
+                                     seq_lengths = gUtils::hg_seqlengths(),
+                                     verbose = TRUE) {
+  
+  # Match output type argument
+  output_type <- match.arg(output_type)
+  
+  # Define biotypes to include
+  biotypes <- "protein_coding"
+  
+  if (verbose) {
+    cli::cli_alert_info("Extracting protein-coding genes ...")
+  }
+  
+  # Use read_gtf_file with appropriate filters
+  pc_genes <- read_gtf_file(
+    gtf_file = gtf_file,
+    output_type = output_type,
+    feature_type = "gene",
+    gene_biotype = biotypes,
+    seq_lengths = seq_lengths,
+    verbose = verbose
+  )
+  
+  return(pc_genes)
+}
 
 
 #' @name aggregate_these
-#' @title Read in all data files of a specific grep pattern, aggregate them into a single data.table
+#' @title Read and aggregate genomic or non-genomic data files with smart format detection
 #'
 #' @description
-#' Collect all files that match a specific `ls`-style pattern at a specific path, read them into a data.table, 
-#' then aggregate all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation 
-#' table, CNV BED, or SV BEDPE.
+#' Collect all files that match a specific pattern at a specific path, detect the file format,
+#' use the appropriate reader function, then aggregate into a single data.table. Automatically 
+#' detects and handles BED, BEDPE, MAF, VCF, and generic tabular formats. All files are read 
+#' as data.tables and aggregated, ensuring maximum compatibility and performance.
 #'
 #' @param path_to_files Path to location of files to be aggregated
-#' @param pattern_to_grab `ls`-style pattern (regex) used to identify files
-#' @param delim Delimiter used in files to be aggregated, expected to be same in all files. Default: `\t`
-#' @param has_header Logical, indicate if files have a header line, expected to be same in all files. Default: TRUE
-#' @param cpus Number of CPUs for reading in data, used by `data.table::fread()`. Default: 1
-#' @param add_uniq_id Logical, indicate if the output data.table should include a unique identifier column, 
-#'   derived from input file basename. Default: FALSE
-#' @param id_column_name Character, name for the unique identifier column if add_uniq_id = TRUE. Default: "sample_id"
-#' @param genomic_sort_output Logical, indicate if the output data.table should be sorted by genomic coordinate. 
-#'   Default: FALSE
-#' @param verbose Logical, whether to print progress messages. Default: TRUE
-#' @param full_names Logical, whether to use full file paths (TRUE) or just basenames (FALSE) for pattern matching. 
-#'   Default: FALSE
+#' @param pattern_to_grab Pattern (regex) used to identify files
+#' @param file_format Character string to force specific format detection: "auto" (default),
+#'   "bed", "bedpe", "maf", "vcf", "generic". Default: "auto"
+#' @param delim Delimiter for generic files. Default: "auto"
+#' @param has_header Logical, if files have header line. Default: TRUE
+#' @param cpus Number of CPUs for reading data. Default: 1
+#' @param add_uniq_id Logical, add unique identifier column from filename. Default: FALSE
+#' @param id_column_name Character, name for unique identifier column. Default: "sample_id"
+#' @param verbose Logical, print progress messages. Default: TRUE
+#' @param ... Additional arguments passed to format-specific readers
 #'
-#' @returns data.table object with all data under preserved column construct
+#' @returns data.table object with aggregated data from all files
 #' @export
 #' @keywords core
 aggregate_these <- function(path_to_files, 
-                            pattern_to_grab, 
-                            delim = "\t", 
+                            pattern_to_grab,
+                            file_format = c("auto", "bed", "bedpe", "maf", "vcf", "generic"),
+                            delim = "auto", 
                             has_header = TRUE,
                             cpus = 1, 
                             add_uniq_id = FALSE, 
                             id_column_name = "sample_id",
-                            genomic_sort_output = FALSE,
                             verbose = TRUE,
-                            full_names = FALSE) {
+                            ...) {
+  
+  # Match file_format argument
+  file_format <- match.arg(file_format)
   
   # Input validation
   if (!dir.exists(path_to_files)) {
@@ -3977,7 +4792,7 @@ aggregate_these <- function(path_to_files,
   input_files_to_aggregate <- list.files(
     path = path_to_files,
     pattern = pattern_to_grab,
-    full.names = full_names
+    full.names = TRUE
   )
   
   # Check if any files were found
@@ -3991,17 +4806,29 @@ aggregate_these <- function(path_to_files,
                                    length(input_files_to_aggregate), pattern_to_grab))
   }
   
-  # Initialize list to store data.tables (more efficient than repeated rbind)
+  # Detect file format if auto
+  if (file_format == "auto") {
+    file_format <- get_file_format(input_files_to_aggregate[1])
+    
+    if (verbose) {
+      cli::cli_alert_info(sprintf("Auto-detected file format: %s", toupper(file_format)))
+    }
+  }
+  
+  # Determine if format is genomic
+  is_genomic <- file_format %in% c("bed", "bedpe", "maf", "vcf")
+  
+  if (verbose && is_genomic) {
+    cli::cli_alert_info(sprintf("Using %s reader with data.table output", toupper(file_format)))
+  }
+  
+  # Initialize list to store data.tables
   dt_list <- vector("list", length(input_files_to_aggregate))
   
-  # Read in all files
+  # Read in all files using appropriate reader (all return data.tables)
   for (i in seq_along(input_files_to_aggregate)) {
     
-    file_path <- if (full_names) {
-      input_files_to_aggregate[i]
-    } else {
-      paste0(path_to_files, input_files_to_aggregate[i])
-    }
+    file_path <- input_files_to_aggregate[i]
     
     if (verbose) {
       cli::cli_alert_info(sprintf("Reading file %d/%d: %s", 
@@ -4009,15 +4836,16 @@ aggregate_these <- function(path_to_files,
                                   basename(file_path)))
     }
     
-    # Read in single file with error handling
+    # Read file with appropriate reader - always get data.table
     dt_to_add <- tryCatch({
-      data.table::fread(
-        input = file_path,
-        sep = delim,
-        header = has_header,
-        stringsAsFactors = FALSE,
-        nThread = cpus,
-        showProgress = FALSE
+      get_reader(
+        file_path = file_path,
+        file_format = file_format,
+        delim = delim,
+        has_header = has_header,
+        cpus = cpus,
+        verbose = FALSE,
+        ...
       )
     }, error = function(e) {
       warning(sprintf("Error reading file %s: %s", basename(file_path), e$message))
@@ -4029,15 +4857,14 @@ aggregate_these <- function(path_to_files,
       next
     }
     
-    # Check if file is empty
+    # Check if empty
     if (nrow(dt_to_add) == 0) {
       warning(sprintf("File %s is empty, skipping", basename(file_path)))
       next
     }
     
-    # Add unique identifier column if requested
+    # Add unique identifier if requested
     if (add_uniq_id) {
-      # Extract ID from filename (remove extension)
       uniq_id <- stringr::str_remove(
         string = basename(input_files_to_aggregate[i]), 
         pattern = "\\..*$"
@@ -4060,7 +4887,7 @@ aggregate_these <- function(path_to_files,
     cli::cli_alert_success(sprintf("Successfully read %d files, aggregating ...", length(dt_list)))
   }
   
-  # Aggregate all data.tables using rbindlist (more efficient than repeated rbind)
+  # Aggregate all data.tables using rbindlist
   aggregate_dt <- tryCatch({
     data.table::rbindlist(dt_list, use.names = TRUE, fill = TRUE)
   }, error = function(e) {
@@ -4074,136 +4901,11 @@ aggregate_these <- function(path_to_files,
   })
   
   if (verbose) {
-    cli::cli_alert_success(sprintf("Aggregated data contains %d rows and %d columns", 
+    cli::cli_alert_success(sprintf("Aggregation complete: %d total records across %d columns", 
                                    nrow(aggregate_dt), ncol(aggregate_dt)))
   }
   
-  # Genomic sorting if requested
-  if (genomic_sort_output) {
-    
-    if (verbose) {
-      cli::cli_alert_info("Detecting file format for genomic sorting...")
-    }
-    
-    # Detect if this is a BEDPE format (has chr1/chr2 or chrom1/chrom2 columns)
-    is_bedpe <- any(grepl("^([Cc]hr1)|([Cc]hrom1)", names(aggregate_dt))) && 
-      any(grepl("^([Cc]hr2)|([Cc]hrom2)", names(aggregate_dt)))
-    
-    if (is_bedpe) {
-      
-      if (verbose) {
-        cli::cli_alert("Detected BEDPE format - using BEDPE-specific sorting ...")
-      }
-      
-      tryCatch({
-        aggregate_dt <- sort_bedpe(aggregate_dt)
-        
-        if (verbose) {
-          cli::cli_alert_success("BEDPE genomic sorting completed")
-        }
-        
-      }, error = function(e) {
-        warning(sprintf("BEDPE sorting failed: %s\nReturning unsorted data", e$message))
-      })
-      
-    } else {
-      
-      if (verbose) {
-        cli::cli_alert("Detected BED(-like) format - using standard genomic sorting ...")
-      }
-      
-      tryCatch({
-        # Convert to GRanges for proper genomic sorting
-        aggregate_gr <- dt_to_gr(input_dt = aggregate_dt)
-        
-        # Convert back to data.table
-        aggregate_dt <- gUtils::gr2dt(x = aggregate_gr)
-        
-        # Remove strand and width columns that are added during conversion
-        cols_to_remove <- c()
-        if ("strand" %in% names(aggregate_dt)) {
-          cols_to_remove <- c(cols_to_remove, "strand")
-        }
-        if ("width" %in% names(aggregate_dt)) {
-          cols_to_remove <- c(cols_to_remove, "width")
-        }
-        
-        if (length(cols_to_remove) > 0) {
-          aggregate_dt[, (cols_to_remove) := NULL]
-        }
-        
-        if (verbose) {
-          cli::cli_alert_success("Standard genomic sorting completed")
-        }
-        
-      }, error = function(e) {
-        warning(sprintf("Genomic sorting failed: %s\nReturning unsorted data", e$message))
-      })
-    }
-  }
-  
-  if (verbose) {
-    cli::cli_alert_success(sprintf("Aggregation complete: %d total variants", nrow(aggregate_dt)))
-  }
-  
   return(aggregate_dt)
-}
-
-#' @name sort_bedpe
-#' @title Sort a BEDPE
-#'
-#' @description
-#' Sort BEDPE data.table by genomic coordinates in chr-notation aware, header
-#' adaptable manner
-#'
-#' @param bedpe_dt data.table in BEDPE format
-#' @return Sorted data.table
-#' @export
-sort_bedpe <- function(bedpe_dt) {
-  
-  # Validate input
-  if (!inherits(bedpe_dt, "data.table")) {
-    stop("Input must be a data.table object")
-  }
-  
-  # Detect chromosome column names
-  chr1_col <- grep("^([Cc]hr1)|([Cc]hrom1|#chr1)", colnames(bedpe_dt), value = TRUE)[1]
-  chr2_col <- grep("^([Cc]hr2)|([Cc]hrom2)", colnames(bedpe_dt), value = TRUE)[1]
-  
-  if (is.na(chr1_col) || is.na(chr2_col)) {
-    warning("Cannot find chromosome columns for sorting")
-    return(bedpe_dt)
-  }
-  
-  # Helper function to extract numeric chromosome value
-  extract_chr_number <- function(chr_vec) {
-    chr_clean <- stringr::str_remove(chr_vec, "^chr")
-    chr_num <- suppressWarnings(as.numeric(chr_clean))
-    
-    chr_num[chr_clean == "X"] <- 23
-    chr_num[chr_clean == "Y"] <- 24
-    chr_num[chr_clean %in% c("M", "MT")] <- 25
-    
-    remaining_na <- is.na(chr_num)
-    if (any(remaining_na)) {
-      unique_other <- unique(chr_clean[remaining_na])
-      chr_num[remaining_na] <- 26 + match(chr_clean[remaining_na], unique_other)
-    }
-    
-    return(chr_num)
-  }
-  
-  # Add sorting columns
-  bedpe_dt[, chr1_sort := extract_chr_number(get(chr1_col))]
-  bedpe_dt[, chr2_sort := extract_chr_number(get(chr2_col))]
-  
-  # Sort by chr1, start1, end1, then chr2, start2, end2
-  data.table::setorderv(bedpe_dt, c("chr1_sort", "start1", "end1", "chr2_sort", "start2", "end2"))
-  
-  # Remove sorting columns
-  bedpe_dt[, c("chr1_sort", "chr2_sort") := NULL]
-  
-  return(bedpe_dt)
 }
 
 

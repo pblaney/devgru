@@ -2,10 +2,11 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_bed_file}
 \alias{read_bed_file}
-\title{Read in a BED file, with or without header, and convert to GenomicRanges object}
+\title{Read in a BED file and convert to GenomicRanges or data.table}
 \usage{
 read_bed_file(
-  bed_file_path,
+  bed_file,
+  output_type = c("gr", "dt"),
   has_header = FALSE,
   additional_col_names = NULL,
   cpus = 1,
@@ -15,7 +16,10 @@ read_bed_file(
 )
 }
 \arguments{
-\item{bed_file_path}{Path to BED file (supports .bed, .bed.gz)}
+\item{bed_file}{Path to BED file (supports .bed, .bed.gz)}
+
+\item{output_type}{Character string specifying output format:
+gr="GenomicRanges" (default) or dt="data.table"}
 
 \item{has_header}{Logical, does BED file have header line. Default: FALSE}
 
@@ -25,7 +29,8 @@ beyond first three. Default: NULL}
 \item{cpus}{Integer, number of CPUs for reading data, used by \code{data.table::fread()}. Default: 1}
 
 \item{seq_lengths}{Named vector object used as template for new seq details.
-See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths}
+See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths.
+Only used when output_type = "GenomicRanges"}
 
 \item{allow_nonstandard_chr}{Logical, whether to allow non-standard chromosomes
 (decoys, HLA, alt contigs). Default: FALSE}
@@ -33,13 +38,12 @@ See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths}
 \item{verbose}{Logical, whether to print progress messages. Default: TRUE}
 }
 \value{
-GenomicRanges object with BED columns, if present, and updated seqinfo, seqnames,
-seqlengths, seqlevels
+GenomicRanges object or data.table with BED data. If GenomicRanges,
+includes updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
-Read in a BED file and convert it to a GenomicRanges object with refactored seq details.
-Expects the first 3 columns as chromosome, start, end; However column names are not necessary.
-The BED file can be either zipped or unzipped. BED files use 0-based coordinates which are
-automatically converted to 1-based for GenomicRanges.
+Read in a BED file and convert it to a GenomicRanges object or data.table with
+refactored seq details. Expects the first 3 columns as chromosome, start, end;
+However column names are not necessary. The BED file can be either zipped or unzipped.
 }
 \keyword{reader}

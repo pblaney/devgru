@@ -2,37 +2,47 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_vcf_file}
 \alias{read_vcf_file}
-\title{Read in a VCF file and convert to GenomicRanges object}
+\title{Read in a VCF file and convert to GenomicRanges or data.table}
 \usage{
 read_vcf_file(
-  vcf_file_path,
-  tumor_sample = NULL,
-  normal_sample = NULL,
-  caller = NULL,
-  mut_type = NULL,
-  seq_lengths = gUtils::hg_seqlengths()
+  vcf_file,
+  output_type = c("gr", "dt"),
+  sample_names = NULL,
+  parse_info = TRUE,
+  parse_format = TRUE,
+  cpus = 1,
+  seq_lengths = gUtils::hg_seqlengths(),
+  verbose = TRUE
 )
 }
 \arguments{
-\item{vcf_file_path}{Path to VCF file}
+\item{vcf_file}{Path to VCF file (supports .vcf, .vcf.gz, .vcf.bgz)}
 
-\item{tumor_sample}{Name of tumor sample as reported in VCF}
+\item{output_type}{Character string specifying output format:
+gr="GenomicRanges" (default) or dt="data.table"}
 
-\item{normal_sample}{Name of normal sample as reported in VCF}
+\item{sample_names}{Character vector of sample names to extract from FORMAT fields.
+If NULL, all samples are extracted. Default: NULL}
 
-\item{caller}{Name of the caller that generated input VCF to be converted, supported: mutect, strelka, varscan, svaba, caveman, deepvariant}
+\item{parse_info}{Logical, whether to parse INFO field into separate columns. Default: TRUE}
 
-\item{mut_type}{Type of mutations within VCF, supported: snv, indel, snp}
+\item{parse_format}{Logical, whether to parse FORMAT fields for each sample. Default: TRUE}
 
-\item{seq_lengths}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
+\item{cpus}{Integer, number of CPUs for parallel processing. Default: 1}
+
+\item{seq_lengths}{Named vector object used as template for new seq details.
+See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths.
+Only used when output_type = "GenomicRanges"}
+
+\item{verbose}{Logical, whether to print progress messages. Default: TRUE}
 }
 \value{
-GenomicRanges object with VCF FILTER/INFO/FORMAT columns, if present, and updated seqinfo, seqnames, seqlengths, seqlevels
+GenomicRanges object or data.table with VCF data including INFO and FORMAT fields
 }
 \description{
-Read in a VCF file and convert it to a GenomicRanges object with refactored seq details.
-Currently supports conversion of somatic SNV/InDel VCFs from Mutect, Strelka, Varscan, SvABA, CaVEMan.
-Also supports conversion of germline SNP/InDel VCF from DeepVariant.
+Read in a VCF file and convert it to a GenomicRanges object or data.table with
+preserved INFO and FORMAT metadata. The function extracts all VCF fields including
+CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, and FORMAT columns.
 The VCF file can be either zipped or unzipped.
 }
 \keyword{reader}

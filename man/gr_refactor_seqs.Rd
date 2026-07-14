@@ -4,12 +4,18 @@
 \alias{gr_refactor_seqs}
 \title{Refactor seqinfo, seqnames, seqlengths, seqlevels of GenomicRanges object for easy harmony}
 \usage{
-gr_refactor_seqs(input_gr, new_levels = gUtils::hg_seqlengths())
+gr_refactor_seqs(
+  input_gr,
+  new_levels = gUtils::hg_seqlengths(),
+  sort_gr = TRUE
+)
 }
 \arguments{
 \item{input_gr}{GenomicRanges object to refactor}
 
 \item{new_levels}{Named vector object used as the template for new seq details, see \code{gUtils::hg_seqlengths()} for example}
+
+\item{sort_gr}{Sort the output GenomicRanges object}
 }
 \value{
 GenomicRanges object with updated seqinfo, seqnames, seqlengths, seqlevels

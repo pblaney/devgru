@@ -2,51 +2,50 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{aggregate_these}
 \alias{aggregate_these}
-\title{Read in all data files of a specific grep pattern, aggregate them into a single data.table}
+\title{Read and aggregate genomic or non-genomic data files with smart format detection}
 \usage{
 aggregate_these(
   path_to_files,
   pattern_to_grab,
-  delim = "\\t",
+  file_format = c("auto", "bed", "bedpe", "maf", "vcf", "generic"),
+  delim = "auto",
   has_header = TRUE,
   cpus = 1,
   add_uniq_id = FALSE,
   id_column_name = "sample_id",
-  genomic_sort_output = FALSE,
   verbose = TRUE,
-  full_names = FALSE
+  ...
 )
 }
 \arguments{
 \item{path_to_files}{Path to location of files to be aggregated}
 
-\item{pattern_to_grab}{\code{ls}-style pattern (regex) used to identify files}
+\item{pattern_to_grab}{Pattern (regex) used to identify files}
 
-\item{delim}{Delimiter used in files to be aggregated, expected to be same in all files. Default: \verb{\\t}}
+\item{file_format}{Character string to force specific format detection: "auto" (default),
+"bed", "bedpe", "maf", "vcf", "generic". Default: "auto"}
 
-\item{has_header}{Logical, indicate if files have a header line, expected to be same in all files. Default: TRUE}
+\item{delim}{Delimiter for generic files. Default: "auto"}
 
-\item{cpus}{Number of CPUs for reading in data, used by \code{data.table::fread()}. Default: 1}
+\item{has_header}{Logical, if files have header line. Default: TRUE}
 
-\item{add_uniq_id}{Logical, indicate if the output data.table should include a unique identifier column,
-derived from input file basename. Default: FALSE}
+\item{cpus}{Number of CPUs for reading data. Default: 1}
 
-\item{id_column_name}{Character, name for the unique identifier column if add_uniq_id = TRUE. Default: "sample_id"}
+\item{add_uniq_id}{Logical, add unique identifier column from filename. Default: FALSE}
 
-\item{genomic_sort_output}{Logical, indicate if the output data.table should be sorted by genomic coordinate.
-Default: FALSE}
+\item{id_column_name}{Character, name for unique identifier column. Default: "sample_id"}
 
-\item{verbose}{Logical, whether to print progress messages. Default: TRUE}
+\item{verbose}{Logical, print progress messages. Default: TRUE}
 
-\item{full_names}{Logical, whether to use full file paths (TRUE) or just basenames (FALSE) for pattern matching.
-Default: FALSE}
+\item{...}{Additional arguments passed to format-specific readers}
 }
 \value{
-data.table object with all data under preserved column construct
+data.table object with aggregated data from all files
 }
 \description{
-Collect all files that match a specific \code{ls}-style pattern at a specific path, read them into a data.table,
-then aggregate all into single data.table. Best suited for genomic data formats such as SNV/InDel mutation
-table, CNV BED, or SV BEDPE.
+Collect all files that match a specific pattern at a specific path, detect the file format,
+use the appropriate reader function, then aggregate into a single data.table. Automatically
+detects and handles BED, BEDPE, MAF, VCF, and generic tabular formats. All files are read
+as data.tables and aggregated, ensuring maximum compatibility and performance.
 }
 \keyword{core}

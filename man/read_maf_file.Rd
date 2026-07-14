@@ -2,37 +2,38 @@
 % Please edit documentation in R/swissArmyKnife.R
 \name{read_maf_file}
 \alias{read_maf_file}
-\title{Read MAF file and convert to GenomicRanges object}
+\title{Read MAF file and convert to GenomicRanges or data.table}
 \usage{
 read_maf_file(
-  maf_file_path,
+  maf_file,
+  output_type = c("gr", "dt"),
   cpus = 2,
   seq_lengths = gUtils::hg_seqlengths(),
-  remove_filtered = FALSE,
   verbose = TRUE
 )
 }
 \arguments{
-\item{maf_file_path}{Path to MAF file (supports .maf, .maf.gz, .maf.txt, .txt)}
+\item{maf_file}{Path to MAF file (supports .maf, .maf.gz, .maf.txt, .txt)}
+
+\item{output_type}{Character string specifying output format:
+gr="GenomicRanges" (default) or dt="data.table"}
 
 \item{cpus}{Number of CPUs for reading data, used by \code{data.table::fread()}. Default: 2}
 
 \item{seq_lengths}{Named vector object used as template for new seq details.
-See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths}
-
-\item{remove_filtered}{Logical, whether to remove variants with FILTER != "PASS". Default: FALSE}
+See \code{gUtils::hg_seqlengths()} for example. Default: hg38 seqlengths.
+Only used when output_type = "GenomicRanges"}
 
 \item{verbose}{Logical, whether to print progress messages. Default: TRUE}
 }
 \value{
-GenomicRanges object with MAF columns and updated seqinfo, seqnames,
-seqlengths, seqlevels
+GenomicRanges object or data.table with MAF data. If GenomicRanges,
+includes updated seqinfo, seqnames, seqlengths, seqlevels
 }
 \description{
 Read in a MAF file which contains a number of columns and convert it to a
-GenomicRanges object with refactored seq details. The MAF file can be either
-zipped or unzipped. This function performs validation and filtering to ensure
-proper MAF format compliance.
+GenomicRanges object or data.table. The MAF file can be either zipped or unzipped.
+This function performs validation and filtering to ensure proper MAF format compliance.
 For more specific MAFtools operations, see \code{maftools::read.maf()}
 }
 \keyword{reader}

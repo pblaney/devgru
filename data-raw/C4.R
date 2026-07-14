@@ -151,7 +151,7 @@ usethis::use_data(braf_dnase_demo_dt_hg38, internal = FALSE, overwrite = TRUE)
 #   dplyr::select(seqnames,start,end,exclusion_segment)
 
 # Don't rerun the code snippet but simply load the data here
-exclusion_regions_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "exclusion_regions.hg38.bed", package = "devgru"),
+exclusion_regions_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "exclusion_regions.hg38.bed", package = "devgru"),
                                         has_header = T)
 # Export for usage
 usethis::use_data(exclusion_regions_hg38, internal = FALSE, overwrite = TRUE)
@@ -163,7 +163,7 @@ usethis::use_data(exclusion_regions_hg38, internal = FALSE, overwrite = TRUE)
 #
 
 # Don't rerun the code snippet but simply load the data here
-chromosome_arms_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "chromosome_arms.hg38.bed", package = "devgru"),
+chromosome_arms_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "chromosome_arms.hg38.bed", package = "devgru"),
                                  has_header = T)
 # Export for usage
 usethis::use_data(chromosome_arms_hg38, internal = FALSE, overwrite = TRUE)
@@ -201,7 +201,7 @@ usethis::use_data(chromosome_arms_hg38, internal = FALSE, overwrite = TRUE)
 #                                        read_depth_demo_chr22)
 
 # Don't rerun the code snippet but simply load the data here
-read_depth_demo_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "read_depth_profile.hg38.bed.gz", package = "devgru"),
+read_depth_demo_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "read_depth_profile.hg38.bed.gz", package = "devgru"),
                                       has_header = T)
 # Export for usage
 usethis::use_data(read_depth_demo_hg38, internal = FALSE, overwrite = TRUE)
@@ -349,7 +349,7 @@ usethis::use_data(read_depth_demo_hg38, internal = FALSE, overwrite = TRUE)
 # final_gene_gr <- gr_refactor_seqs(dt2gr(final_gene_dt))
 
 # Don't rerun the code snippet but simply load the data here
-gene_body_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "gene_body.Ensembl_v108.hg38.bed.gz", package = "devgru"),
+gene_body_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "gene_body.Ensembl_v108.hg38.bed.gz", package = "devgru"),
                                 has_header = T)
 # Export for usage
 usethis::use_data(gene_body_hg38, internal = FALSE, overwrite = TRUE)
@@ -390,10 +390,10 @@ usethis::use_data(hmcl_conditions_demo_dt_hg38, internal = FALSE, overwrite = TR
 
 # Don't rerun the code snippet but simply load the data here
 # Ig regions
-myeloma_translocation_ig_loci_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "myeloma_translocation_ig_loci.hg38.bed", package = "devgru"),
+myeloma_translocation_ig_loci_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "myeloma_translocation_ig_loci.hg38.bed", package = "devgru"),
                                                     has_header = T)
 # Partner regions
-myeloma_translocation_partner_loci_hg38 <- read_bed_file(bed_file_path = fs::path_package("extdata", "myeloma_translocation_partner_loci.hg38.bed", package = "devgru"),
+myeloma_translocation_partner_loci_hg38 <- read_bed_file(bed_file = fs::path_package("extdata", "myeloma_translocation_partner_loci.hg38.bed", package = "devgru"),
                                                     has_header = T)
 
 # Export for usage

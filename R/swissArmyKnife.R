@@ -240,7 +240,6 @@ get_file_format <- function(filename) {
   return("generic")
 }
 
-
 #' @name get_reader
 #' @title Read file using appropriate format-specific reader
 #' 
@@ -313,6 +312,52 @@ get_reader <- function(file_path, file_format, delim, has_header,
              nThread = cpus,
              showProgress = FALSE
            )
+         },
+         stop(sprintf("Unknown file format: %s", file_format))
+  )
+}
+
+#' @name get_converter
+#' @title Convert using appropriate format-specific functions
+#' 
+#' @description
+#' Utilize the pre-built converters for various object formats.
+#' Available:
+#'   - dt --> gr
+#'   - dt --> gi
+#'   - gr --> dt
+#'   - gi --> bedpe
+#'   - gi --> grl
+#' 
+#' @param input_obj Full path to file
+#' @param from_format Character string of input object format
+#'   "dt", "gr", "gi"
+#' @param to_format Character string of input object format
+#'   "dt", "gr", "gi", "grl"
+#' 
+#' @keywords internal
+get_converter <- function(input_obj, from_format, to_format) {
+  
+  format_conversion_string <- paste0(from_format,"_to_",to_format)
+  if (!format_conversion_string %in% c("dt_to_gr","dt_to_gi","gr_to_dt",
+                                       "gi_to_dt","gi_to_grl")) {
+    stop(sprintf("[ %s ---> %s ] conversion not supported", from_format, to_format))
+  }
+  switch(format_conversion_string,
+         "dt_to_gr" = {
+           dt_to_gr(input_dt = input_obj)
+         },
+         "dt_to_gi" = {
+           dt_to_gi(input_dt = input_obj)
+         },
+         "gr_to_dt" = {
+           gUtils::gr2dt(x = input_obj)
+         },
+         "gi_to_dt" = {
+           gi_to_dt(input_gi = input_obj)
+         },
+         "gi_to_grl" = {
+           gi_to_grl(input_gi = input_obj)
          },
          stop(sprintf("Unknown file format: %s", file_format))
   )
@@ -918,7 +963,7 @@ dt_to_gr <- function(input_dt) {
   return(gr)
 }
 
-#' @name bedpe_to_gi
+#' @name dt_to_gi
 #' @title Convert BEDPE-like data.table to GInteractions
 #'
 #' @description
@@ -931,7 +976,7 @@ dt_to_gr <- function(input_dt) {
 #' @return GInteractions object
 #' @export
 #' @keywords core
-bedpe_to_gi <- function(input_dt, keep_metadata = TRUE) {
+dt_to_gi <- function(input_dt, keep_metadata = TRUE) {
   
   # Check for Suggests libraries
   if(!require_namespaces(pkgs = c("plyranges","plyinteractions","InteractionSet"))) {
@@ -1096,7 +1141,7 @@ gi_to_grl <- function(input_gi, keep_metadata = TRUE) {
   return(grl)
 }
 
-#' @name gi_to_bedpe
+#' @name gi_to_dt
 #' @title Convert GInteractions to BEDPE data.table format
 #'
 #' @description
@@ -1105,11 +1150,12 @@ gi_to_grl <- function(input_gi, keep_metadata = TRUE) {
 #'
 #' @param input_gi GInteractions object
 #' @return data.table in BEDPE format
+#' @export
 #' @keywords converter
-gi_to_bedpe <- function(input_gi) {
+gi_to_dt <- function(input_gi) {
   
   # Check for Suggests libraries
-  if(!require_namespaces(pkgs = c("InteractionSet"))) {
+  if(!devgru:::require_namespaces(pkgs = c("InteractionSet"))) {
     stop(cli::cli_alert_danger("Package {.pkg plyinteractions, InteractionSet} required for this workflow function"))
   }
   
@@ -1178,6 +1224,7 @@ gi_to_bedpe <- function(input_gi) {
 #' @param input_grl GenomicRangesList where each element contains exactly 2 ranges
 #' @param keep_metadata Logical, whether to preserve metadata (default: TRUE)
 #' @return GInteractions object
+#' @export
 #' @keywords converter
 grl_to_gi <- function(input_grl, keep_metadata = TRUE) {
   
@@ -3985,7 +4032,7 @@ read_bedpe_file <- function(bedpe_file,
   }
   
   # For GInteractions or GRangesList, first convert to GInteractions
-  gi <- bedpe_to_gi(input_dt = bedpe_dt, 
+  gi <- dt_to_gi(input_dt = bedpe_dt, 
                     keep_metadata = keep_metadata)
   
   # Return based on output type

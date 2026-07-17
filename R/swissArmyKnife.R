@@ -96,7 +96,7 @@ Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumb
 p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
 median_insrt=median_reads=segment=reads.corrected=FILTER=Chromosome=Start_Position=NULL
 chr1_sort=chr2_sort=ig_region=trx_id=start1=end1=strand1=start2=end2=strand2=seqnames1=NULL
-seqnames2=NULL
+seqnames2=chr1=chr2=NULL
 
 #
 #
@@ -240,6 +240,7 @@ get_file_format <- function(filename) {
   return("generic")
 }
 
+
 #' @name get_reader
 #' @title Read file using appropriate format-specific reader
 #' 
@@ -250,7 +251,7 @@ get_file_format <- function(filename) {
 #' @param file_path Full path to file
 #' @param file_format Character string to force specific format detection: "auto" (default),
 #'   "bed", "bedpe", "maf", "vcf", "generic". Default: "auto"
-#' @param delim Delimiter for generic files.
+#' @param delim Delimiter for generic files. Default: "auto"
 #' @param has_header Logical, if files have header line. Default: TRUE
 #' @param cpus Number of CPUs for reading data. Default: 1
 #' @param seq_lengths Named vector for seqinfo refactoring (genomic formats only). 
@@ -778,21 +779,23 @@ gr_refactor_seqs <- function(input_gr, new_levels = gUtils::hg_seqlengths(), sor
 #' @title Refactor seqinfo of GInteractions object for easy harmony
 #'
 #' @description
-#' Single command to refactor all seq details of a GInteractions object to easily harmonize 
+#' Single command to refactor all seq details of a GInteractions object to easily harmonize
 #' with any other genomic object. This function updates seqinfo for both anchor regions.
-#' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38, 
+#' By default, this package uses the autosome (1-22) and sex chromosomes (X,Y) of hg38,
 #' see `gUtils::hg_seqlengths()`
 #' Users can adjust this using the `new_levels` parameter.
 #'
 #' @param input_gi GInteractions object to refactor
-#' @param new_levels Named vector object used as the template for new seq details, 
+#' @param new_levels Named vector object used as the template for new seq details,
 #'   see `gUtils::hg_seqlengths()` for example
+#' @param sort_gi Sort the output GInteractions object
 #'
 #' @returns GInteractions object with updated seqinfo for both anchors
 #' @export
 #' @keywords core
-gi_refactor_seqs <- function(input_gi, 
-                             new_levels = gUtils::hg_seqlengths()) {
+gi_refactor_seqs <- function(input_gi,
+                             new_levels = gUtils::hg_seqlengths(),
+                             sort_gi = TRUE) {
   # Check for Suggests libraries
   if(!require_namespaces(pkgs = c("InteractionSet"))) {
     stop(cli::cli_alert_danger("Package {.pkg InteractionSet} required for this workflow function"))
@@ -802,41 +805,19 @@ gi_refactor_seqs <- function(input_gi,
     stop("Input must be a GInteractions object")
   }
   
-  # Store metadata before processing
-  original_mcols <- S4Vectors::mcols(input_gi)
+  # Set the base GRCh38 reference seqinfo
+  ref_genome_seqinfo <- GenomeInfoDb::Seqinfo(seqnames = names(new_levels)[1:24],
+                                              seqlengths = new_levels[1:24],
+                                              isCircular = rep(FALSE,24),
+                                              genome = "GRCh38")
   
-  # Extract both anchors
-  anchor1 <- InteractionSet::anchors(input_gi, type = "first")
-  anchor2 <- InteractionSet::anchors(input_gi, type = "second")
+  # Instantiate a copy of the input and begin refactoring by setting the seqlevels
+  gi_refactored <- input_gi
+  GenomeInfoDb::seqlevels(gi_refactored) <- GenomeInfoDb::seqlevels(ref_genome_seqinfo)
   
-  # Add metadata back to each anchor so it is carried over during refactoring
-  S4Vectors::mcols(anchor1) <- original_mcols
-  S4Vectors::mcols(anchor2) <- original_mcols
-  
-  # Refactor both anchors
-  anchor1_refactored <- gr_refactor_seqs(input_gr = anchor1,
-                                         new_levels = new_levels,
-                                         sort_gr = FALSE)
-  anchor2_refactored <- gr_refactor_seqs(input_gr = anchor2,
-                                         new_levels = new_levels,
-                                         sort_gr = FALSE)
-  
-  # Check if we lost any interactions
-  n_before <- length(input_gi)
-  n_after <- length(anchor1_refactored)
-  
-  if(n_after < n_before) {
-    message("Removed ", n_before - n_after, " interactions due to invalid sequence names")
-  }
-  
-  if(n_after == 0) {
-    warning("All interactions were removed. Check that sequence names match new_levels.")
-    return(InteractionSet::GInteractions(anchor1_refactored, anchor2_refactored))
-  }
-  
-  # Recreate GInteractions with refactored anchors
-  gi_refactored <- InteractionSet::GInteractions(anchor1 = anchor1_refactored,
-                                                 anchor2 = anchor2_refactored)
+  # Then use InteractionSet to directly set the seqinfo of the GInteractions and
+  # embedded GRanges regions inside
+  InteractionSet::seqinfo(gi_refactored) <- ref_genome_seqinfo
   
   return(gi_refactored)
 }
@@ -953,8 +934,8 @@ dt_to_gr <- function(input_dt) {
 bedpe_to_gi <- function(input_dt, keep_metadata = TRUE) {
   
   # Check for Suggests libraries
-  if(!require_namespaces(pkgs = c("plyinteractions"))) {
-    stop(cli::cli_alert_danger("Package {.pkg plyinteractions} required for this workflow function"))
+  if(!require_namespaces(pkgs = c("plyranges","plyinteractions","InteractionSet"))) {
+    stop(cli::cli_alert_danger("Package {.pkg plyranges, plyinteractions, InteractionSet} required for this workflow function"))
   }
   
   # Read data.table
@@ -1123,13 +1104,12 @@ gi_to_grl <- function(input_gi, keep_metadata = TRUE) {
 #' preserving object metadata
 #'
 #' @param input_gi GInteractions object
-#' @param include_metadata Logical, whether to include metadata columns (default: TRUE)
 #' @return data.table in BEDPE format
 #' @keywords converter
-gi_to_bedpe <- function(input_gi, include_metadata = TRUE) {
+gi_to_bedpe <- function(input_gi) {
   
   # Check for Suggests libraries
-  if(!devgru:::require_namespaces(pkgs = c("InteractionSet"))) {
+  if(!require_namespaces(pkgs = c("InteractionSet"))) {
     stop(cli::cli_alert_danger("Package {.pkg plyinteractions, InteractionSet} required for this workflow function"))
   }
   
@@ -1184,7 +1164,6 @@ gi_to_bedpe <- function(input_gi, include_metadata = TRUE) {
   
   # remove unneeded width columns
   bedpe_dt <- bedpe_dt[,-c("width1","width2")]
-  cli::cli_alert_success("Created BEDPE data.table")
   
   return(bedpe_dt)
 }
@@ -4661,7 +4640,7 @@ read_gtf_file <- function(gtf_file,
       gtf_dt <- data.table::data.table(
         chr = as.character(seqnames(gtf_gr)),
         start = GenomicRanges::start(gtf_gr),
-        end = end(gtf_gr),
+        end = GenomicRanges::end(gtf_gr),
         strand = as.character(strand(gtf_gr))
       )
       
@@ -4760,7 +4739,7 @@ get_protein_coding_genes <- function(gtf_file,
 #'
 #' @returns data.table object with aggregated data from all files
 #' @export
-#' @keywords core
+#' @keywords core, reader
 aggregate_these <- function(path_to_files, 
                             pattern_to_grab,
                             file_format = c("auto", "bed", "bedpe", "maf", "vcf", "generic"),

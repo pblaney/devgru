@@ -4,13 +4,19 @@
 \alias{gi_refactor_seqs}
 \title{Refactor seqinfo of GInteractions object for easy harmony}
 \usage{
-gi_refactor_seqs(input_gi, new_levels = gUtils::hg_seqlengths())
+gi_refactor_seqs(
+  input_gi,
+  new_levels = gUtils::hg_seqlengths(),
+  sort_gi = TRUE
+)
 }
 \arguments{
 \item{input_gi}{GInteractions object to refactor}
 
 \item{new_levels}{Named vector object used as the template for new seq details,
 see \code{gUtils::hg_seqlengths()} for example}
+
+\item{sort_gi}{Sort the output GInteractions object}
 }
 \value{
 GInteractions object with updated seqinfo for both anchors

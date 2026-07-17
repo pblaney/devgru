@@ -21,7 +21,7 @@ get_reader(
 \item{file_format}{Character string to force specific format detection: "auto" (default),
 "bed", "bedpe", "maf", "vcf", "generic". Default: "auto"}
 
-\item{delim}{Delimiter for generic files.}
+\item{delim}{Delimiter for generic files. Default: "auto"}
 
 \item{has_header}{Logical, if files have header line. Default: TRUE}
 

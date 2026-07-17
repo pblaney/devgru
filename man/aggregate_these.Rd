@@ -48,4 +48,5 @@ use the appropriate reader function, then aggregate into a single data.table. Au
 detects and handles BED, BEDPE, MAF, VCF, and generic tabular formats. All files are read
 as data.tables and aggregated, ensuring maximum compatibility and performance.
 }
-\keyword{core}
+\keyword{core,}
+\keyword{reader}

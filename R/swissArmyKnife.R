@@ -96,7 +96,7 @@ Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumb
 p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
 median_insrt=median_reads=segment=reads.corrected=FILTER=Chromosome=Start_Position=NULL
 chr1_sort=chr2_sort=ig_region=trx_id=start1=end1=strand1=start2=end2=strand2=seqnames1=NULL
-seqnames2=chr1=chr2=NULL
+seqnames2=chr1=chr2=file_format=NULL
 
 #
 #
@@ -1155,7 +1155,7 @@ gi_to_grl <- function(input_gi, keep_metadata = TRUE) {
 gi_to_dt <- function(input_gi) {
   
   # Check for Suggests libraries
-  if(!devgru:::require_namespaces(pkgs = c("InteractionSet"))) {
+  if(!require_namespaces(pkgs = c("InteractionSet"))) {
     stop(cli::cli_alert_danger("Package {.pkg plyinteractions, InteractionSet} required for this workflow function"))
   }
   

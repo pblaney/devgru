@@ -28,8 +28,8 @@ CLI message and start time of process run
 ``` r
 process_start <- cli_stopwatch_start(package = "devgru", function_name = "workflow_demo_func")
 #> ── Start ───────────────────────────────────────────────────────────────────────
-#> devgru :: workflow_demo_func() 2026-10-29 05:02:12.788141
+#> devgru :: workflow_demo_func() 2026-10-29 05:47:21.459527
 process_start
 #>    user  system elapsed 
-#>  12.349   1.344  15.645 
+#>  13.833   1.540  16.618 
 ```

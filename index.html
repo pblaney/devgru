@@ -52,20 +52,26 @@
 <!-- badges: start -->
 
 <p>A developmental <code>R</code> environment for a suite of <code>GenomicRanges</code> utilities</p>
+<p><code>devgru</code> provides tools for cancer genomics analysis within the <a href="https://bioconductor.org/packages/release/bioc/html/GenomicRanges.html" class="external-link"><code>GenomicRanges</code></a> universe: format-aware file readers, conversions between <code>data.table</code>, <code>GRanges</code>, <code>GRangesList</code> and <code>GInteractions</code>, <code>seqinfo</code> harmonization, chromosome-parallel workflows, copy number, structural variant, and RNA-seq analysis helpers, QC diagnostics, and plotting. By default everything is anchored to the autosomes and sex chromosomes of hg38 (see <code><a href="https://rdrr.io/pkg/gUtils/man/hg_seqlengths.html" class="external-link">gUtils::hg_seqlengths()</a></code>).</p>
+<p>Full documentation and the function reference are available at <a href="https://pblaney.github.io/devgru/" class="uri">https://pblaney.github.io/devgru/</a>.</p>
 <div class="section level3">
 <h3 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h3>
 <p>You can install the current development version of <code>devgru</code> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"pblaney/devgru"</span><span class="op">)</span></span>
-<span><span class="co">#BiocManager::install("pblaney/devgru")</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"pblaney/devgru"</span><span class="op">)</span></span></code></pre></div>
+<p>Several dependencies are only available on GitHub (<a href="https://github.com/mskilab-org/gUtils" class="external-link"><code>mskilab-org/gUtils</code></a>, <a href="https://github.com/mskilab-org/fishHook" class="external-link"><code>mskilab-org/fishHook</code></a>, <a href="https://github.com/caravagnalab/easypar" class="external-link"><code>caravagnalab/easypar</code></a>, <a href="https://github.com/caravagn/pio" class="external-link"><code>caravagn/pio</code></a>, <a href="https://github.com/showteeth/ggpie" class="external-link"><code>showteeth/ggpie</code></a>, and <a href="https://github.com/pblaney/gGnome" class="external-link"><code>pblaney/gGnome</code></a>); these are declared as <code>Remotes</code> and resolved automatically by <code>devtools</code>/<code>remotes</code>. Packages listed under <code>Suggests</code> (e.g. <code>DESeq2</code>, <code>fgsea</code>, <code>DNAcopy</code>, <code>InteractionSet</code>) are only needed for the specific workflows that use them.</p>
 </div>
 <div class="section level3">
 <h3 id="suite-of-packages">Suite of Packages<a class="anchor" aria-label="anchor" href="#suite-of-packages"></a>
 </h3>
 <p>The current suite of utilities for <code>devgru</code> can be quickly installed, if needed, and loaded with:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/kit_loadout.html">kit_loadout</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/pblaney/devgru" class="external-link">devgru</a></span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/kit_loadout.html">kit_loadout</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Install/upgrade any missing or outdated packages in the kit first</span></span>
+<span><span class="fu"><a href="reference/kit_loadout.html">kit_loadout</a></span><span class="op">(</span>update_kit <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <div class="section level4">
 <h4 id="genomicranges-core">GenomicRanges Core<a class="anchor" aria-label="anchor" href="#genomicranges-core"></a>
 </h4>
@@ -90,27 +96,152 @@
 <li><a href="https://readr.tidyverse.org" class="external-link"><code>readr</code></a></li>
 <li><a href="https://ggplot2.tidyverse.org" class="external-link"><code>ggplot2</code></a></li>
 <li><a href="https://nanx.me/ggsci/" class="external-link"><code>ggsci</code></a></li>
-<li><a href="https://emilhvitfeldt.github.io/paletteer/" class="external-link"><code>paletter</code></a></li>
+<li><a href="https://emilhvitfeldt.github.io/paletteer/" class="external-link"><code>paletteer</code></a></li>
 <li><a href="https://github.com/thomasp85/scico" class="external-link"><code>scico</code></a></li>
 <li><a href="https://ardata-fr.github.io/flextable-book/index.html" class="external-link"><code>flextable</code></a></li>
 <li><a href="https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html" class="external-link"><code>mclust</code></a></li>
 <li><a href="https://stat.ethz.ch/R-manual/R-devel/library/parallel/doc/parallel.pdf" class="external-link"><code>parallel</code></a></li>
 <li><a href="https://cran.r-project.org/web/packages/doParallel/doParallel.pdf" class="external-link"><code>doParallel</code></a></li>
 <li><a href="https://cran.r-project.org/web/packages/foreach/vignettes/foreach.html" class="external-link"><code>foreach</code></a></li>
+<li><a href="https://cran.r-project.org/web/packages/R.utils/index.html" class="external-link"><code>R.utils</code></a></li>
 </ul>
 </div>
 </div>
 <div class="section level3">
-<h3 id="development-tools">Development tools<a class="anchor" aria-label="anchor" href="#development-tools"></a>
+<h3 id="function-overview">Function Overview<a class="anchor" aria-label="anchor" href="#function-overview"></a>
 </h3>
+<table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
+<thead><tr>
+<th>Category</th>
+<th>Functions</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><strong>Environment setup</strong></td>
+<td>
+<code><a href="reference/kit_loadout.html">kit_loadout()</a></code> loads the package kit; <code><a href="reference/chrompar.html">chrompar()</a></code> runs a function in parallel by chromosome</td>
+</tr>
+<tr>
+<td><strong>Readers</strong></td>
+<td>
+<code><a href="reference/read_bed_file.html">read_bed_file()</a></code>, <code><a href="reference/read_bedpe_file.html">read_bedpe_file()</a></code>, <code><a href="reference/read_gtf_file.html">read_gtf_file()</a></code>, <code><a href="reference/read_maf_file.html">read_maf_file()</a></code>, <code><a href="reference/read_vcf_file.html">read_vcf_file()</a></code> (output as <code>GRanges</code> or <code>data.table</code>), plus <code><a href="reference/aggregate_these.html">aggregate_these()</a></code> to detect the format of and combine many files into one <code>data.table</code>
+</td>
+</tr>
+<tr>
+<td><strong>Conversions</strong></td>
+<td>
+<code><a href="reference/dt_to_gr.html">dt_to_gr()</a></code>, <code><a href="reference/dt_to_gi.html">dt_to_gi()</a></code>, <code><a href="reference/gi_to_dt.html">gi_to_dt()</a></code>, <code><a href="reference/gi_to_grl.html">gi_to_grl()</a></code>, <code><a href="reference/grl_to_gi.html">grl_to_gi()</a></code>, <code><a href="reference/gr_to_seg.html">gr_to_seg()</a></code>
+</td>
+</tr>
+<tr>
+<td><strong>GenomicRanges utilities</strong></td>
+<td>
+<code><a href="reference/gr_refactor_seqs.html">gr_refactor_seqs()</a></code>, <code><a href="reference/grl_refactor_seqs.html">grl_refactor_seqs()</a></code>, <code><a href="reference/gi_refactor_seqs.html">gi_refactor_seqs()</a></code> to harmonize seqinfo; <code><a href="reference/gr_flank.html">gr_flank()</a></code> for boundary-aware flanking; <code><a href="reference/gr_sanitycheck.html">gr_sanitycheck()</a></code> and <code><a href="reference/dt_sanitycheck.html">dt_sanitycheck()</a></code> for input validation</td>
+</tr>
+<tr>
+<td><strong>Copy number</strong></td>
+<td>
+<code><a href="reference/get_fragcounter_segmentation.html">get_fragcounter_segmentation()</a></code>, <code><a href="reference/get_cbs_per_chromosome.html">get_cbs_per_chromosome()</a></code>, <code><a href="reference/get_cov_gap_imputation.html">get_cov_gap_imputation()</a></code>, <code><a href="reference/get_imputed_gaps_per_chromosome.html">get_imputed_gaps_per_chromosome()</a></code>, <code><a href="reference/get_corrected_cnv_profile.html">get_corrected_cnv_profile()</a></code>
+</td>
+</tr>
+<tr>
+<td><strong>Mutations &amp; structural variants</strong></td>
+<td>
+<code><a href="reference/get_vaf.html">get_vaf()</a></code>, <code><a href="reference/get_maf_lite.html">get_maf_lite()</a></code>, <code><a href="reference/get_maf_nonsynonymous.html">get_maf_nonsynonymous()</a></code>, <code><a href="reference/get_igh_trx_subtype.html">get_igh_trx_subtype()</a></code> (canonical IGH translocations in multiple myeloma)</td>
+</tr>
+<tr>
+<td><strong>RNA-seq</strong></td>
+<td>
+<code><a href="reference/get_deseq2_diff_expr.html">get_deseq2_diff_expr()</a></code>, <code><a href="reference/get_fgsea_pathway_enrichment.html">get_fgsea_pathway_enrichment()</a></code>, <code><a href="reference/get_protein_coding_genes.html">get_protein_coding_genes()</a></code>
+</td>
+</tr>
+<tr>
+<td><strong>QC diagnostics</strong></td>
+<td>
+<code><a href="reference/get_qc_diagnostics_alignment.html">get_qc_diagnostics_alignment()</a></code> (Alfred), <code><a href="reference/get_qc_diagnostics_snvindel.html">get_qc_diagnostics_snvindel()</a></code>, <code><a href="reference/get_jabba_qc_diagnostic.html">get_jabba_qc_diagnostic()</a></code>
+</td>
+</tr>
+<tr>
+<td><strong>Plotting</strong></td>
+<td>
+<code><a href="reference/geom_deseq2_volcano.html">geom_deseq2_volcano()</a></code>, <code><a href="reference/geom_gsea_enrichment.html">geom_gsea_enrichment()</a></code>, <code><a href="reference/geom_gap_imputation.html">geom_gap_imputation()</a></code>, <code><a href="reference/geom_jabba_stats.html">geom_jabba_stats()</a></code>, <code><a href="reference/copynumber_palettier.html">copynumber_palettier()</a></code>
+</td>
+</tr>
+<tr>
+<td><strong>CLI helpers</strong></td>
+<td>
+<code><a href="reference/cli_stopwatch_start.html">cli_stopwatch_start()</a></code>, <code><a href="reference/cli_stopwatch_end.html">cli_stopwatch_end()</a></code>, <code><a href="reference/function_cli_intro.html">function_cli_intro()</a></code>, <code><a href="reference/cli_pio_colorscheme.html">cli_pio_colorscheme()</a></code>
+</td>
+</tr>
+</tbody>
+</table>
+<p>See the <a href="https://pblaney.github.io/devgru/reference/index.html">reference page</a> for full details on each function.</p>
+</div>
+<div class="section level3">
+<h3 id="quick-start">Quick Start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
+</h3>
+<p>Read genomic files straight into harmonized <code>GRanges</code> (or a <code>data.table</code> with <code>output_type = "dt"</code>):</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/pblaney/devgru" class="external-link">devgru</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">peaks_gr</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/read_bed_file.html">read_bed_file</a></span><span class="op">(</span><span class="st">"peaks.bed.gz"</span><span class="op">)</span></span>
+<span><span class="va">vcf_gr</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/read_vcf_file.html">read_vcf_file</a></span><span class="op">(</span><span class="st">"sample.vcf.gz"</span>, cpus <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
+<span><span class="va">sv_dt</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/read_bedpe_file.html">read_bedpe_file</a></span><span class="op">(</span><span class="st">"sample.bedpe"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Collect and combine all MAFs in a directory into a single data.table</span></span>
+<span><span class="va">cohort_maf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/aggregate_these.html">aggregate_these</a></span><span class="op">(</span>path_to_files <span class="op">=</span> <span class="st">"mafs/"</span>,</span>
+<span>                              pattern_to_grab <span class="op">=</span> <span class="st">"\\.maf$"</span>,</span>
+<span>                              add_uniq_id <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p>Harmonize seqinfo across objects, e.g. after lifting over from hg19 to hg38:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">GenomeInfoDb</span><span class="fu">::</span><span class="fu">seqinfo</span><span class="op">(</span><span class="va">example_dnase_hg38</span><span class="op">)</span></span>
+<span><span class="fu">GenomeInfoDb</span><span class="fu">::</span><span class="fu">seqinfo</span><span class="op">(</span><span class="fu"><a href="reference/gr_refactor_seqs.html">gr_refactor_seqs</a></span><span class="op">(</span><span class="va">example_dnase_hg38</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>Add flanks to a region without crossing a boundary such as the centromere:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">notch2</span> <span class="op">&lt;-</span> <span class="fu">gUtils</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/gUtils/man/parse.gr.html" class="external-link">parse.gr</a></span><span class="op">(</span><span class="st">"chr1:119911553-120069662"</span><span class="op">)</span></span>
+<span><span class="va">chr1_p_arm</span> <span class="op">&lt;-</span> <span class="fu">gUtils</span><span class="fu">::</span><span class="fu">`%Q%`</span><span class="op">(</span><span class="va">chromosome_arms_hg38</span>, <span class="va">seqnames</span> <span class="op">==</span> <span class="st">"chr1"</span> <span class="op">&amp;</span> <span class="va">arm</span> <span class="op">==</span> <span class="st">"p"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="reference/gr_flank.html">gr_flank</a></span><span class="op">(</span>input_gr <span class="op">=</span> <span class="va">notch2</span>,</span>
+<span>         start_flank <span class="op">=</span> <span class="fl">3e6</span>,</span>
+<span>         end_flank <span class="op">=</span> <span class="fl">3e6</span>,</span>
+<span>         start_flank_boundary <span class="op">=</span> <span class="fu">GenomicRanges</span><span class="fu">::</span><span class="fu">start</span><span class="op">(</span><span class="va">chr1_p_arm</span><span class="op">)</span>,</span>
+<span>         end_flank_boundary <span class="op">=</span> <span class="fu">GenomicRanges</span><span class="fu">::</span><span class="fu">end</span><span class="op">(</span><span class="va">chr1_p_arm</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>Run larger workflows, such as CBS segmentation of a fragCounter read depth profile parallelized by chromosome:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fragcounter_seg</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/get_fragcounter_segmentation.html">get_fragcounter_segmentation</a></span><span class="op">(</span></span>
+<span>    path_to_fragcounter_profile <span class="op">=</span> <span class="st">"sample.fragcounter.rds"</span>,</span>
+<span>    cpus <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="bundled-data">Bundled Data<a class="anchor" aria-label="anchor" href="#bundled-data"></a>
+</h3>
+<p><code>devgru</code> ships with hg38 reference annotations used internally by its workflows, as well as small demo datasets for examples:</p>
 <ul>
-<li>Continuous code testing is possible thanks to <a href="https://www.tidyverse.org/blog/2020/04/usethis-1-6-0/" class="external-link">GitHub actions</a> through <em><a href="https://CRAN.R-project.org/package=usethis" class="external-link">usethis</a></em>, <em><a href="https://CRAN.R-project.org/package=remotes" class="external-link">remotes</a></em>, and <em><a href="https://CRAN.R-project.org/package=rcmdcheck" class="external-link">rcmdcheck</a></em> customized to use <a href="https://www.bioconductor.org/help/docker/" class="external-link">Bioconductor’s docker containers</a> and <em><a href="https://bioconductor.org/packages/3.14/BiocCheck" class="external-link">BiocCheck</a></em>.</li>
-<li>Code coverage assessment is possible thanks to <a href="https://codecov.io/gh" class="external-link">codecov</a> and <em><a href="https://CRAN.R-project.org/package=covr" class="external-link">covr</a></em>.</li>
-<li>The <a href="http://pblaney.github.io/devgru" class="external-link">documentation website</a> is automatically updated thanks to <em><a href="https://CRAN.R-project.org/package=pkgdown" class="external-link">pkgdown</a></em>.</li>
-<li>The code is styled automatically thanks to <em><a href="https://CRAN.R-project.org/package=styler" class="external-link">styler</a></em>.</li>
-<li>The documentation is formatted thanks to <em><a href="https://CRAN.R-project.org/package=devtools" class="external-link">devtools</a></em> and <em><a href="https://CRAN.R-project.org/package=roxygen2" class="external-link">roxygen2</a></em>.</li>
+<li>
+<strong>Reference genomic feature annotations</strong>: <code>chromosome_arms_hg38</code>, <code>exclusion_regions_hg38</code>, <code>gene_body_hg38</code> (Ensembl v108),</li>
+<li>
+<strong>Myeloma-specific genomic features</strong>: <code>myeloma_translocation_ig_loci_hg38</code>, <code>myeloma_translocation_partner_loci_hg38</code>
+</li>
+<li>
+<strong>Demo data</strong>: DNase I hypersensitivity sites (<code>example_dnase_hg38</code>, <code>braf_dnase_demo_dt_hg19/hg38</code>, <code>kras_dnase_demo_gr_hg19/hg38</code>), a fragCounter read depth profile (<code>read_depth_demo_hg38</code>), and an RNA-seq counts matrix with condition labels (<code>hmcl_counts_demo_dt_hg38</code>, <code>hmcl_conditions_demo_dt_hg38</code>)</li>
 </ul>
-<p>This package was developed using <em><a href="https://bioconductor.org/packages/3.14/biocthis" class="external-link">biocthis</a></em>.</p>
+<p>The raw files these were built from are in <code>inst/extdata/</code>.</p>
+</div>
+<div class="section level3">
+<h3 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
+</h3>
+<p>To cite <code>devgru</code> in publications, use:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/citation.html" class="external-link">citation</a></span><span class="op">(</span><span class="st">"devgru"</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="contributing">Contributing<a class="anchor" aria-label="anchor" href="#contributing"></a>
+</h3>
+<p>Bug reports and feature requests are welcome on the <a href="https://github.com/pblaney/devgru/issues" class="external-link">issue tracker</a>.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">

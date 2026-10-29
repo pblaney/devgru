@@ -42,7 +42,7 @@ Several dependencies are only available on GitHub
 [`caravagnalab/easypar`](https://github.com/caravagnalab/easypar),
 [`caravagn/pio`](https://github.com/caravagn/pio),
 [`showteeth/ggpie`](https://github.com/showteeth/ggpie), and
-[`mskilab-org/gGnome`](https://github.com/pblaney/gGnome)); these are
+[`pblaney/gGnome`](https://github.com/pblaney/gGnome)); these are
 declared as `Remotes` and resolved automatically by
 `devtools`/`remotes`. Packages listed under `Suggests` (e.g. `DESeq2`,
 `fgsea`, `DNAcopy`, `InteractionSet`) are only needed for the specific
@@ -164,8 +164,8 @@ workflows, as well as small demo datasets for examples:
 
 - **Reference genomic feature annotations**: `chromosome_arms_hg38`,
   `exclusion_regions_hg38`, `gene_body_hg38` (Ensembl v108),
-- **Myeloma-specific genomic
-  features**:`myeloma_translocation_ig_loci_hg38`,
+- **Myeloma-specific genomic features**:
+  `myeloma_translocation_ig_loci_hg38`,
   `myeloma_translocation_partner_loci_hg38`
 - **Demo data**: DNase I hypersensitivity sites (`example_dnase_hg38`,
   `braf_dnase_demo_dt_hg19/hg38`, `kras_dnase_demo_gr_hg19/hg38`), a

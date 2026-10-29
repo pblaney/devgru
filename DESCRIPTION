@@ -10,7 +10,7 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-URL: https://github.com/pblaney/devgru
+URL: https://github.com/pblaney/devgru, https://pblaney.github.io/devgru/
 BugReports: https://github.com/pblaney/devgru/issues
 biocViews: Software, BiomedicalInformatics
 Depends: 

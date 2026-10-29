@@ -1,0 +1,57 @@
+url: https://pblaney.github.io/devgru/
+template:
+  bootstrap: 5
+
+reference:
+- title: Environment setup
+  contents:
+  - kit_loadout
+  - chrompar
+- title: Readers
+  contents:
+  - read_bed_file
+  - read_bedpe_file
+  - read_gtf_file
+  - read_maf_file
+  - read_vcf_file
+- title: Conversions
+  contents:
+  - dt_to_gr
+  - dt_to_gi
+  - gi_to_dt
+  - gi_to_grl
+  - grl_to_gi
+  - gr_to_seg
+- title: GenomicRanges utilities
+  contents:
+  - gr_flank
+  - gr_sanitycheck
+  - dt_sanitycheck
+  - ends_with("_refactor_seqs")
+  - aggregate_these
+- title: Analysis
+  contents:
+  - starts_with("get_")
+- title: Plotting
+  contents:
+  - starts_with("geom_")
+  - copynumber_palettier
+- title: CLI helpers
+  contents:
+  - starts_with("cli_")
+  - function_cli_intro
+- title: Datasets
+  contents:
+  - braf_dnase_demo_dt_hg19
+  - braf_dnase_demo_dt_hg38
+  - chromosome_arms_hg38
+  - example_dnase_hg38
+  - exclusion_regions_hg38
+  - gene_body_hg38
+  - hmcl_conditions_demo_dt_hg38
+  - hmcl_counts_demo_dt_hg38
+  - kras_dnase_demo_gr_hg19
+  - kras_dnase_demo_gr_hg38
+  - myeloma_translocation_ig_loci_hg38
+  - myeloma_translocation_partner_loci_hg38
+  - read_depth_demo_hg38

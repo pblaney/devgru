@@ -1328,11 +1328,11 @@ gr_sanitycheck <- function(query_gr, expected_cols = NULL) {
       # Check if columns are equal
       if(length(colnames(S4Vectors::mcols(query_gr))) == length(expected_cols)) {
         # Check if columns are same as expected
-        if(all.equal(target = expected_cols, current = colnames(S4Vectors::mcols(query_gr)))) {
+        if(setequal(x = expected_cols, y = colnames(S4Vectors::mcols(query_gr)))) {
           return(TRUE)
         } else {
           pio::pioDisp(gUtils::gr2dt(query_gr))
-          cli::cli_alert_danger(all.equal(target = expected_cols, current = colnames(S4Vectors::mcols(query_gr))))
+          cli::cli_alert_danger(setequal(x = expected_cols, y = colnames(S4Vectors::mcols(query_gr))))
           return(FALSE)
         }
         # Columns are not equal
@@ -1399,11 +1399,11 @@ dt_sanitycheck <- function(query_dt, expected_cols = NULL) {
       # Check if columns are equal
       if(length(colnames(query_dt)) == length(expected_cols)) {
         # Check if columns are same as expected
-        if(all.equal(target = expected_cols, current = colnames(query_dt))) {
+        if(setequal(x = expected_cols, y = colnames(query_dt))) {
           return(TRUE)
         } else {
           pio::pioDisp(query_dt)
-          cli::cli_alert_danger(all.equal(target = expected_cols, current = colnames(query_dt)))
+          cli::cli_alert_danger(setequal(x = expected_cols, y = colnames(query_dt)))
           return(FALSE)
         }
         # Columns are not equal
@@ -1596,7 +1596,7 @@ gr_to_seg <- function(input_gr, exp_colnames = c("ID","num.mark","seg.mean")) {
 #'
 #' @returns Character vector of detected translocation subtype(s) or "Not Detected"
 #' @export
-get_igh_trx_subtype <- function(bedpe_file_path,
+get_igh_trx_subtype <- function(bedpe_file,
                                 region_flank = "500Kb",
                                 verbose = TRUE) {
   # Check for Suggests libraries

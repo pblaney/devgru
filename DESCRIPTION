@@ -71,5 +71,8 @@ Suggests:
 Remotes:
     github::mskilab-org/gUtils,
     github::caravagnalab/easypar,
-    github::mskilab-org/fishHook
+    github::mskilab-org/fishHook,
+    github::caravagn/pio,
+    github::showteeth/ggpie,
+    github::pblaney/gGnome
 Config/roxygen2/version: 8.0.0

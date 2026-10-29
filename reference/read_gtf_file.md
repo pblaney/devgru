@@ -1,0 +1,56 @@
+# Read in a GTF file and convert to GenomicRanges or data.table
+
+Read in a GTF file, such as one from Ensembl, and convert it to a
+GenomicRanges object or data.table with refactored seq details. The GTF
+file can be either zipped or unzipped. Supports filtering by feature
+type and additional GTF-specific processing.
+
+## Usage
+
+``` r
+read_gtf_file(
+  gtf_file,
+  output_type = c("gr", "dt"),
+  feature_type = NULL,
+  gene_biotype = NULL,
+  seq_lengths = gUtils::hg_seqlengths(),
+  verbose = TRUE
+)
+```
+
+## Arguments
+
+- gtf_file:
+
+  Path to GTF file (supports .gtf, .gtf.gz)
+
+- output_type:
+
+  Character string specifying output format: gr="GenomicRanges"
+  (default) or dt="data.table"
+
+- feature_type:
+
+  Character vector of feature types to retain (e.g., "gene",
+  "transcript", "exon", "CDS"). If NULL, all features are retained.
+  Default: NULL
+
+- gene_biotype:
+
+  Character vector of gene biotypes to retain (e.g., "protein_coding",
+  "lncRNA"). If NULL, all biotypes are retained. Default: NULL
+
+- seq_lengths:
+
+  Named vector object used as template for new seq details. See
+  [`gUtils::hg_seqlengths()`](https://rdrr.io/pkg/gUtils/man/hg_seqlengths.html)
+  for example. Default: hg38 seqlengths. Only used when output_type =
+  "GenomicRanges"
+
+- verbose:
+
+  Logical, whether to print progress messages. Default: TRUE
+
+## Value
+
+GenomicRanges object or data.table with GTF data and updated seqinfo

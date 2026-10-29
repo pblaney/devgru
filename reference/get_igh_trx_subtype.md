@@ -1,0 +1,35 @@
+# Detect Canonical IGH Translocations in Multiple Myeloma
+
+Identifies one of the five canonical IGH translocations in multiple
+myeloma: t(11;14), t(4;14), t(14;16), t(14;20), and t(6;14). Analyzes
+structural variant BEDPE data to detect translocations involving the IGH
+locus on chromosome 14 and canonical partner chromosomes.
+
+Breakpoint capture regions are GRCh38 genomic coordinates based on the
+panel regions defined in
+https://github.com/parvathisudha/Targeted-Panel-Analysis/blob/v1/BED_files/hg38/v22/MyelomaPanel2Translocationsv2_hg38.bed
+from https://pmc.ncbi.nlm.nih.gov/articles/PMC9250632/
+
+## Usage
+
+``` r
+get_igh_trx_subtype(bedpe_file_path, region_flank = "500Kb", verbose = TRUE)
+```
+
+## Arguments
+
+- bedpe_file_path:
+
+  Character, path to BEDPE file containing structural variants
+
+- region_flank:
+
+  Character, flank size to use for partner regions. Default: "500Kb"
+
+- verbose:
+
+  Logical, whether to print progress messages. Default: TRUE
+
+## Value
+
+Character vector of detected translocation subtype(s) or "Not Detected"

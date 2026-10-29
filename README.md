@@ -11,6 +11,7 @@ issues](https://img.shields.io/github/issues/pblaney/devgru)](https://github.com
 pulls](https://img.shields.io/github/issues-pr/pblaney/devgru)](https://github.com/pblaney/devgru/pulls)
 [![Lifecycle:
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![pkgdown](https://github.com/pblaney/devgru/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/pblaney/devgru/actions/workflows/pkgdown.yaml)
 <!-- badges: end -->
 
 A developmental `R` environment for a suite of `GenomicRanges` utilities

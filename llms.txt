@@ -1,4 +1,4 @@
-# devgru ![devgru logo](reference/figures/devgruLogo.png)
+# devgru
 
 A developmental `R` environment for a suite of `GenomicRanges` utilities
 
@@ -185,6 +185,9 @@ tracker](https://github.com/pblaney/devgru/issues).
 
 ## Environment setup
 
+Install and load the packages devgru builds on, and run workflows in
+parallel by chromosome.
+
 - [`kit_loadout()`](https://pblaney.github.io/devgru/reference/kit_loadout.md)
   : Build the devgru environment by installing/loading packages
 
@@ -196,6 +199,9 @@ tracker](https://github.com/pblaney/devgru/issues).
 
 ## Readers
 
+Read common genomic file formats into `GRanges`, `GInteractions`, or
+`data.table`, or detect the format and aggregate many files at once.
+
 - [`read_bed_file()`](https://pblaney.github.io/devgru/reference/read_bed_file.md)
   : Read in a BED file and convert to GenomicRanges or data.table
 - [`read_bedpe_file()`](https://pblaney.github.io/devgru/reference/read_bedpe_file.md)
@@ -206,8 +212,14 @@ tracker](https://github.com/pblaney/devgru/issues).
   : Read MAF file and convert to GenomicRanges or data.table
 - [`read_vcf_file()`](https://pblaney.github.io/devgru/reference/read_vcf_file.md)
   : Read in a VCF file and convert to GenomicRanges or data.table
+- [`aggregate_these()`](https://pblaney.github.io/devgru/reference/aggregate_these.md)
+  : Read and aggregate genomic or non-genomic data files with smart
+  format detection
 
 ## Conversions
+
+Move between `data.table`, `GRanges`, `GRangesList`, and
+`GInteractions`.
 
 - [`dt_to_gr()`](https://pblaney.github.io/devgru/reference/dt_to_gr.md)
   : Convert data.table to GenomicRanges Object
@@ -225,6 +237,9 @@ tracker](https://github.com/pblaney/devgru/issues).
 
 ## GenomicRanges utilities
 
+Validate inputs, harmonize seqinfo across objects, and add
+boundary-aware flanks.
+
 - [`gr_flank()`](https://pblaney.github.io/devgru/reference/gr_flank.md)
   : Precise addition of flanking to GenomicRanges with boundary-aware
   options
@@ -241,51 +256,64 @@ tracker](https://github.com/pblaney/devgru/issues).
   object for easy harmony
 - [`grl_refactor_seqs()`](https://pblaney.github.io/devgru/reference/grl_refactor_seqs.md)
   : Refactor seqinfo of GRangesList object for easy harmony
-- [`aggregate_these()`](https://pblaney.github.io/devgru/reference/aggregate_these.md)
-  : Read and aggregate genomic or non-genomic data files with smart
-  format detection
 
 ## Analysis
 
+### Copy number
+
+- [`get_fragcounter_segmentation()`](https://pblaney.github.io/devgru/reference/get_fragcounter_segmentation.md)
+  : Generate a segmentation file from a fragCounter read depth profile
 - [`get_cbs_per_chromosome()`](https://pblaney.github.io/devgru/reference/get_cbs_per_chromosome.md)
   : Single chromosome run circular binary segmentation (CBS) algorithm
   on read depth profile
+- [`get_cov_gap_imputation()`](https://pblaney.github.io/devgru/reference/get_cov_gap_imputation.md)
+  : Generate gap imputed coverage from fragCounter output
+- [`get_imputed_gaps_per_chromosome()`](https://pblaney.github.io/devgru/reference/get_imputed_gaps_per_chromosome.md)
+  : Single chromosome run imputation of small, NA read gaps in
+  fragCounter coverage
 - [`get_corrected_cnv_profile()`](https://pblaney.github.io/devgru/reference/get_corrected_cnv_profile.md)
   : Read in CNV profile data.table of various flavors and extract a
   corrected profile
-- [`get_cov_gap_imputation()`](https://pblaney.github.io/devgru/reference/get_cov_gap_imputation.md)
-  : Generate gap imputed coverage from fragCounter output
+
+### Structural variants
+
+- [`get_igh_trx_subtype()`](https://pblaney.github.io/devgru/reference/get_igh_trx_subtype.md)
+  : Detect Canonical IGH Translocations in Multiple Myeloma
+- [`get_jabba_qc_diagnostic()`](https://pblaney.github.io/devgru/reference/get_jabba_qc_diagnostic.md)
+  : Run diagnostic workflow of after JaBbA run to help evaluate quality
+  of graph
+
+### Mutations
+
+- [`get_maf_lite()`](https://pblaney.github.io/devgru/reference/get_maf_lite.md)
+  : Convert SNV & InDel mutation table to MAF-lite format
+- [`get_maf_nonsynonymous()`](https://pblaney.github.io/devgru/reference/get_maf_nonsynonymous.md)
+  : Extract Non-Synonymous Mutations from MAF
+- [`get_vaf()`](https://pblaney.github.io/devgru/reference/get_vaf.md) :
+  Quick pull or explicitly calculate the VAF for mutation records of
+  various flavors
+
+### Expression and pathways
+
 - [`get_deseq2_diff_expr()`](https://pblaney.github.io/devgru/reference/get_deseq2_diff_expr.md)
   : Run DESeq2 differential expression analysis on RNA-seq count data
 - [`get_fgsea_pathway_enrichment()`](https://pblaney.github.io/devgru/reference/get_fgsea_pathway_enrichment.md)
   : Run fgsea gene set enrichment analysis on DESeq2 differential gene
   expression output
-- [`get_fragcounter_segmentation()`](https://pblaney.github.io/devgru/reference/get_fragcounter_segmentation.md)
-  : Generate a segmentation file from a fragCounter read depth profile
-- [`get_igh_trx_subtype()`](https://pblaney.github.io/devgru/reference/get_igh_trx_subtype.md)
-  : Detect Canonical IGH Translocations in Multiple Myeloma
-- [`get_imputed_gaps_per_chromosome()`](https://pblaney.github.io/devgru/reference/get_imputed_gaps_per_chromosome.md)
-  : Single chromosome run imputation of small, NA read gaps in
-  fragCounter coverage
-- [`get_jabba_qc_diagnostic()`](https://pblaney.github.io/devgru/reference/get_jabba_qc_diagnostic.md)
-  : Run diagnostic workflow of after JaBbA run to help evaluate quality
-  of graph
-- [`get_maf_lite()`](https://pblaney.github.io/devgru/reference/get_maf_lite.md)
-  : Convert SNV & InDel mutation table to MAF-lite format
-- [`get_maf_nonsynonymous()`](https://pblaney.github.io/devgru/reference/get_maf_nonsynonymous.md)
-  : Extract Non-Synonymous Mutations from MAF
 - [`get_protein_coding_genes()`](https://pblaney.github.io/devgru/reference/get_protein_coding_genes.md)
   : Extract protein-coding genes from GTF file
+
+### Quality control
+
 - [`get_qc_diagnostics_alignment()`](https://pblaney.github.io/devgru/reference/get_qc_diagnostics_alignment.md)
   : Generate diagnostic plots for alignment QC checks using Alfred
   summary files
 - [`get_qc_diagnostics_snvindel()`](https://pblaney.github.io/devgru/reference/get_qc_diagnostics_snvindel.md)
   : Generate diagnostic plots for SNV & InDel variant calling QC checks
-- [`get_vaf()`](https://pblaney.github.io/devgru/reference/get_vaf.md) :
-  Quick pull or explicitly calculate the VAF for mutation records of
-  various flavors
 
 ## Plotting
+
+Diagnostic and results plots built with `ggplot2`.
 
 - [`geom_deseq2_volcano()`](https://pblaney.github.io/devgru/reference/geom_deseq2_volcano.md)
   : Volcano plot for exploring results from DESeq2 differential gene
@@ -302,6 +330,8 @@ tracker](https://github.com/pblaney/devgru/issues).
   : Create color palette for integer copy number states
 
 ## CLI helpers
+
+Rich console output for marking the steps of long-running workflows.
 
 - [`cli_pio_colorscheme()`](https://pblaney.github.io/devgru/reference/cli_pio_colorscheme.md)
   : Set the color scheme options for pio CLI text in devgru

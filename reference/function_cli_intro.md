@@ -39,7 +39,7 @@ function_cli_intro(package = "devgru",
                    parameter_x, parameter_y)
 #>  [ devgru v0.99.0 ] 
 #> 
-#> ────────────────────────────────────────────────────────────────────────────────
+#> ───────────────────────────────────────────────────────────────────────
 #> 
 #> Error in "cli::cli_alert(text = \"Launching {.emph {.pkg {function_name}()}} {crayon::white(clisymbols::symbol$ellipsis)}\")": ! Could not evaluate cli `{}` expression: `crayon::white(clisy…`.
 #> Caused by error in `loadNamespace(x)`:

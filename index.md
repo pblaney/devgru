@@ -1,4 +1,4 @@
-# devgru ![devgru logo](reference/figures/devgruLogo.png)
+# devgru
 
 A developmental `R` environment for a suite of `GenomicRanges` utilities
 

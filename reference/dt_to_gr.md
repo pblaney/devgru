@@ -34,27 +34,33 @@ seqlengths, seqlevels
 
 # Look at the original data.table
 braf_dnase_demo_dt_hg38
-#>    seqnames     start       end strand signalValue  pValue biospecimen   gene
-#>      <char>     <int>     <int> <char>       <num>   <num>      <char> <char>
-#> 1:     chr7 140740305 140740552      *     2.16924 1.59134        K562   KRAS
-#> 2:     chr7 140797423 140798072      *     2.17796 1.59886        K562   KRAS
-#> 3:     chr7 140826433 140826768      *     2.59020 1.98645        K562   KRAS
-#> 4:     chr7 140842477 140843425      *     6.56378 7.66134        K562   KRAS
+#>    seqnames     start       end strand signalValue  pValue biospecimen
+#>      <char>     <int>     <int> <char>       <num>   <num>      <char>
+#> 1:     chr7 140740305 140740552      *     2.16924 1.59134        K562
+#> 2:     chr7 140797423 140798072      *     2.17796 1.59886        K562
+#> 3:     chr7 140826433 140826768      *     2.59020 1.98645        K562
+#> 4:     chr7 140842477 140843425      *     6.56378 7.66134        K562
+#>      gene
+#>    <char>
+#> 1:   KRAS
+#> 2:   KRAS
+#> 3:   KRAS
+#> 4:   KRAS
 # Now convert to GRanges
 dt_to_gr(braf_dnase_demo_dt_hg38)
 #> GRanges object with 4 ranges and 4 metadata columns:
-#>       seqnames              ranges strand | signalValue    pValue biospecimen
-#>          <Rle>           <IRanges>  <Rle> |   <numeric> <numeric> <character>
-#>   [1]     chr7 140740305-140740552      * |     2.16924   1.59134        K562
-#>   [2]     chr7 140797423-140798072      * |     2.17796   1.59886        K562
-#>   [3]     chr7 140826433-140826768      * |     2.59020   1.98645        K562
-#>   [4]     chr7 140842477-140843425      * |     6.56378   7.66134        K562
-#>              gene
-#>       <character>
-#>   [1]        KRAS
-#>   [2]        KRAS
-#>   [3]        KRAS
-#>   [4]        KRAS
+#>       seqnames              ranges strand | signalValue    pValue
+#>          <Rle>           <IRanges>  <Rle> |   <numeric> <numeric>
+#>   [1]     chr7 140740305-140740552      * |     2.16924   1.59134
+#>   [2]     chr7 140797423-140798072      * |     2.17796   1.59886
+#>   [3]     chr7 140826433-140826768      * |     2.59020   1.98645
+#>   [4]     chr7 140842477-140843425      * |     6.56378   7.66134
+#>       biospecimen        gene
+#>       <character> <character>
+#>   [1]        K562        KRAS
+#>   [2]        K562        KRAS
+#>   [3]        K562        KRAS
+#>   [4]        K562        KRAS
 #>   -------
 #>   seqinfo: 24 sequences from GRCh38 genome
 # Check the seqinfo
@@ -77,18 +83,18 @@ GenomeInfoDb::seqinfo(dt_to_gr(braf_dnase_demo_dt_hg38))
 # Conversion looks fine
 gUtils::dt2gr(braf_dnase_demo_dt_hg38)
 #> GRanges object with 4 ranges and 4 metadata columns:
-#>       seqnames              ranges strand | signalValue    pValue biospecimen
-#>          <Rle>           <IRanges>  <Rle> |   <numeric> <numeric> <character>
-#>   [1]     chr7 140740305-140740552      * |     2.16924   1.59134        K562
-#>   [2]     chr7 140797423-140798072      * |     2.17796   1.59886        K562
-#>   [3]     chr7 140826433-140826768      * |     2.59020   1.98645        K562
-#>   [4]     chr7 140842477-140843425      * |     6.56378   7.66134        K562
-#>              gene
-#>       <character>
-#>   [1]        KRAS
-#>   [2]        KRAS
-#>   [3]        KRAS
-#>   [4]        KRAS
+#>       seqnames              ranges strand | signalValue    pValue
+#>          <Rle>           <IRanges>  <Rle> |   <numeric> <numeric>
+#>   [1]     chr7 140740305-140740552      * |     2.16924   1.59134
+#>   [2]     chr7 140797423-140798072      * |     2.17796   1.59886
+#>   [3]     chr7 140826433-140826768      * |     2.59020   1.98645
+#>   [4]     chr7 140842477-140843425      * |     6.56378   7.66134
+#>       biospecimen        gene
+#>       <character> <character>
+#>   [1]        K562        KRAS
+#>   [2]        K562        KRAS
+#>   [3]        K562        KRAS
+#>   [4]        K562        KRAS
 #>   -------
 #>   seqinfo: 1 sequence from an unspecified genome
 # However the seqinfo will conflict with other hg38 GRanges

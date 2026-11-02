@@ -1,20 +1,62 @@
 url: https://pblaney.github.io/devgru/
+
+# Styled after the tidyverse pkgdown template used by ggplot2
 template:
   bootstrap: 5
+  bslib:
+    primary: "#447099"
+    base_font: {google: {family: "Source Sans Pro", wght: [400, 600], ital: [0, 1]}}
+    code_font: {google: "Source Code Pro"}
+    font_scale: 1.2
+    fg: "#172431"
+    bg: "#fcfcfc"
+    border-radius: 0
+    btn-border-radius: 3px
+    grid-gutter-width: 3rem
+    pkgdown-nav-height: 78px
+
+code:
+  width: 71
+
+development:
+  mode: auto
+
+navbar:
+  type: light
+  bg: none
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
+
+home:
+  links:
+  - text: ggGenomicTracks
+    href: https://pblaney.github.io/ggGenomicTracks/
 
 reference:
 - title: Environment setup
+  desc: >
+    Install and load the packages devgru builds on, and run workflows in parallel
+    by chromosome.
   contents:
   - kit_loadout
   - chrompar
+
 - title: Readers
+  desc: >
+    Read common genomic file formats into `GRanges`, `GInteractions`, or
+    `data.table`, or detect the format and aggregate many files at once.
   contents:
   - read_bed_file
   - read_bedpe_file
   - read_gtf_file
   - read_maf_file
   - read_vcf_file
+  - aggregate_these
+
 - title: Conversions
+  desc: >
+    Move between `data.table`, `GRanges`, `GRangesList`, and `GInteractions`.
   contents:
   - dt_to_gr
   - dt_to_gi
@@ -22,24 +64,57 @@ reference:
   - gi_to_grl
   - grl_to_gi
   - gr_to_seg
+
 - title: GenomicRanges utilities
+  desc: >
+    Validate inputs, harmonize seqinfo across objects, and add boundary-aware flanks.
   contents:
   - gr_flank
   - gr_sanitycheck
   - dt_sanitycheck
   - ends_with("_refactor_seqs")
-  - aggregate_these
+
 - title: Analysis
+- subtitle: Copy number
   contents:
-  - starts_with("get_")
+  - get_fragcounter_segmentation
+  - get_cbs_per_chromosome
+  - get_cov_gap_imputation
+  - get_imputed_gaps_per_chromosome
+  - get_corrected_cnv_profile
+- subtitle: Structural variants
+  contents:
+  - get_igh_trx_subtype
+  - get_jabba_qc_diagnostic
+- subtitle: Mutations
+  contents:
+  - get_maf_lite
+  - get_maf_nonsynonymous
+  - get_vaf
+- subtitle: Expression and pathways
+  contents:
+  - get_deseq2_diff_expr
+  - get_fgsea_pathway_enrichment
+  - get_protein_coding_genes
+- subtitle: Quality control
+  contents:
+  - get_qc_diagnostics_alignment
+  - get_qc_diagnostics_snvindel
+
 - title: Plotting
+  desc: >
+    Diagnostic and results plots built with `ggplot2`.
   contents:
   - starts_with("geom_")
   - copynumber_palettier
+
 - title: CLI helpers
+  desc: >
+    Rich console output for marking the steps of long-running workflows.
   contents:
   - starts_with("cli_")
   - function_cli_intro
+
 - title: Datasets
   contents:
   - braf_dnase_demo_dt_hg19

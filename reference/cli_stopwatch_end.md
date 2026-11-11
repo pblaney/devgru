@@ -32,12 +32,12 @@ cli_stopwatch_end(package = "devgru", function_name, stopwatch_start)
 process_start <- cli_stopwatch_start(package = "devgru",
                                      function_name = "workflow_demo_func")
 #> ── Start ──────────────────────────────────────────────────────────────
-#> devgru :: workflow_demo_func() 2026-11-02 08:08:36.882647
+#> devgru :: workflow_demo_func() 2026-11-11 20:07:02.908523
 process_end <- cli_stopwatch_end(package = "devgru",
                                  function_name = "workflow_demo_func",
                                  stopwatch_start = process_start)
 #> ── Stop ───────────────────────────────────────────────────────────────
-#> devgru :: workflow_demo_func() 2026-11-02 08:08:36.889286
+#> devgru :: workflow_demo_func() 2026-11-11 20:07:02.919856
 #> Error in "cli::cli_alert_info(\"Duration {crayon::white(clisymbols::symbol$ellipsis)}\")": ! Could not evaluate cli `{}` expression: `crayon::white(clisy…`.
 #> Caused by error in `loadNamespace(x)`:
 #> ! there is no package called ‘clisymbols’

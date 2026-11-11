@@ -47,21 +47,19 @@
 #                                                                                    #
 # }}}}------->>>                                                      <<<-------{{{{ #
 
+# Only the core GRanges stack is imported wholesale. Every other package is
+# either called with `pkg::fn` or brought in symbol-by-symbol below, because
+# wholesale imports of overlapping namespaces (dplyr, data.table, stats, cli,
+# crayon, R.utils, VariantAnnotation, fishHook, ...) silently replace one
+# another's functions, e.g. stats::start() masking GenomicRanges::start().
 #' @import gUtils
 #' @import GenomicRanges
 #' @import GenomeInfoDb
-#' @import data.table
-#' @import VariantAnnotation
-#' @import stringr
-#' @import dplyr
-#' @import ggplot2
-#' @import stats
-#' @import crayon
-#' @import cli
-#' @import pio
-#' @import R.utils
-#' @import fishHook
-#' @import utils
+
+#' @importFrom data.table data.table as.data.table := .SD
+#' @importFrom dplyr %>% all_of sym
+#' @importFrom ggplot2 aes theme rel element_blank element_line element_rect element_text alpha unit
+#' @importFrom stats median formula na.omit
 
 #' @importFrom pak pkg_install
 #' @importFrom librarian shelf
@@ -96,7 +94,7 @@ Tier_3_Input_Junctions=Tier_3_Output_Junctions=Tumor_Normal_ID=cn=cnmle=copynumb
 p_value_of_Pearson_r=p_value_of_Spearman_Rho=ploidy=purity=tier=verbose=median_cov=NULL
 median_insrt=median_reads=segment=reads.corrected=FILTER=Chromosome=Start_Position=NULL
 chr1_sort=chr2_sort=ig_region=trx_id=start1=end1=strand1=start2=end2=strand2=seqnames1=NULL
-seqnames2=chr1=chr2=file_format=NULL
+seqnames2=chr1=chr2=file_format=chr=ecdf=frequency=n=stat=NULL
 
 #
 #

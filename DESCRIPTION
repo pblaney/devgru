@@ -35,7 +35,6 @@ Imports:
     reshape2,
     utils,
     stats,
-    R.utils,
     parallel,
     doParallel,
     easypar,
@@ -45,9 +44,10 @@ Imports:
     Biostrings,
     gtools,
     ggplot2,
-    fishHook,
     pillar
 Suggests:
+    R.utils,
+    fishHook,
     scales,
     paletteer,
     patchwork,
